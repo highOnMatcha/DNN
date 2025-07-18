@@ -17,6 +17,14 @@ parts/
 sdist/
 var/
 wheels/
+data/
+
+# Data files
+*.csv
+*.parquet
+*.h5
+*.pkl
+*.pickle
 
 # Virtual environments
 venv/
@@ -43,3 +51,20 @@ Thumbs.db
 
 # Logs
 *.log
+
+# ML/AI specific
+models/
+outputs/
+checkpoints/
+wandb/
+.wandb/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Model files
+*.pth
+*.pt
+*.ckpt
+*.safetensors
