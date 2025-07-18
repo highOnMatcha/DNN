@@ -1,0 +1,17 @@
+# Segmentation Project Requirements
+# Install after root requirements: pip install -r requirements.txt
+
+# Computer Vision
+torch>=2.0.0
+torchvision>=0.15.0
+opencv-python>=4.8.0
+
+# Image processing
+Pillow>=10.0.0
+scikit-image>=0.21.0
+
+# Segmentation models
+segmentation-models-pytorch>=0.3.0
+
+# Experiment tracking
+wandb>=0.15.0

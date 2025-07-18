@@ -1,0 +1,15 @@
+# Time Series Project Requirements  
+# Install after root requirements: pip install -r requirements.txt
+
+# Time series analysis
+statsmodels>=0.14.0
+scikit-learn>=1.3.0
+
+# Deep learning for time series
+torch>=2.0.0
+
+# Time series visualization
+plotly>=5.15.0
+
+# Experiment tracking
+wandb>=0.15.0
