@@ -42,3 +42,8 @@ Model configs are in `src/config/model_configs.json`. The data exploration noteb
 ## Tracking
 
 Uses WandB for experiment logging. Set `WANDB_API_KEY` in your `.env` file and the notebooks handle the rest.
+
+Copy the .env.example to `.env` and fill in your WandB API key, after logging in to https://wandb.ai/authorize:
+```bash
+cp .env.example .env
+```
