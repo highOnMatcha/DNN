@@ -4,28 +4,6 @@
 
 This directory contains a comprehensive single-model training pipeline (`train.py`) with integrated WandB logging for dialog model training using the Alpaca-GPT4 dataset.
 
-## Features
-
-### 🚀 **Single Model Training Pipeline**
-- Trains one model at a time with comprehensive logging
-- Supports both pre-trained and custom (from-scratch) models
-- Configurable training parameters via JSON configuration files
-- Built-in dataset loading and preprocessing
-- Automatic model saving and checkpointing
-
-### 📊 **Comprehensive WandB Integration**
-- **Model Architecture Logging**: Parameters, layers, dimensions
-- **Training Metrics**: Loss curves, learning rates, timing
-- **System Monitoring**: GPU memory usage, training time
-- **Gradient/Weight Tracking**: Histograms and distributions via `wandb.watch()`
-- **Generation Testing**: Response quality metrics and comparison tables
-- **Experiment Tracking**: Full experiment metadata and results
-
-### 🎯 **Configuration Management**
-- **Test Config**: 1 epoch, 2 batch size, 100 samples (quick testing)
-- **Development Config**: 2 epochs, 4 batch size, 1000 samples (development)
-- **Production Config**: 3 epochs, 8 batch size, full dataset (production)
-
 ## Quick Start
 
 ### 1. Setup Environment
@@ -117,39 +95,6 @@ Options:
   --help, -h                     Show help message
 ```
 
-## WandB Integration Details
-
-### What Gets Logged
-
-#### Model Information
-- Total and trainable parameters
-- Model architecture details
-- Configuration parameters
-
-#### Training Metrics
-- Loss curves (train/validation)
-- Learning rate schedule
-- Training duration and timing
-- GPU memory usage
-- Gradient and weight histograms
-
-#### Generation Testing
-- Response generation metrics
-- Generation time and quality
-- Comparison tables across test prompts
-- Success rates and statistics
-
-#### Experiment Metadata
-- Training configuration
-- Dataset information
-- System specifications
-- Timestamps and versions
-
-### WandB Project Structure
-- **Project**: Configurable (default: "dialog-model-training")
-- **Run Names**: `{model}-{config}-{timestamp}`
-- **Tags**: Model name, config type, "single-model", "pipeline"
-
 ## Example Workflows
 
 ### 1. Quick Model Testing
@@ -178,57 +123,3 @@ python src/train.py --model custom-medium --config production
 # Production fine-tuning (1-2 hours)
 python src/train.py --model gpt2-medium --config production
 ```
-
-## Output Structure
-
-```
-models/
-├── custom_tiny/           # Model checkpoints and final model
-│   ├── config.json
-│   ├── model.safetensors
-│   ├── tokenizer.json
-│   └── training_args.bin
-└── wandb/                 # WandB logs and artifacts
-    └── run-{timestamp}-{id}/
-        ├── logs/
-        └── files/
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Import Errors**: Make sure you're running from the `llm/` directory
-2. **CUDA Issues**: Use `--no-cuda` flag if GPU memory is insufficient
-3. **WandB Authentication**: Set `WANDB_API_KEY` environment variable
-4. **Memory Issues**: Reduce batch size or use smaller model
-
-### Performance Tips
-
-1. **Start Small**: Begin with `custom-nano` or `custom-tiny`
-2. **Use GPU**: Significantly faster training on CUDA devices
-3. **Monitor Memory**: Watch WandB system metrics for optimization
-4. **Batch Size**: Adjust based on available memory
-
-## Integration with Notebooks
-
-The training pipeline can be imported and used in Jupyter notebooks:
-
-```python
-from src.train import train_single_model
-
-# Train model programmatically
-trainer, metrics = train_single_model(
-    model_name="custom-tiny",
-    config_type="test", 
-    max_samples=50,
-    project_name="notebook-experiment"
-)
-```
-
-## Next Steps
-
-1. **Experiment Tracking**: Use WandB dashboard to compare runs
-2. **Hyperparameter Tuning**: Modify configurations in `model_configs.json`
-3. **Custom Models**: Add new model architectures to the configuration
-4. **Advanced Training**: Extend pipeline with additional features

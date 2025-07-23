@@ -28,7 +28,7 @@ class WandBCallback(TrainerCallback):
             self.start_time = time.time()
             model = kwargs.get('model')
             if model:
-                self.wandb_run.watch(model, log="all", log_freq=10, log_graph=False)
+                self.wandb_run.watch(model, log="all", log_freq=1, log_graph=False)
                 self.logged_model_info = True
     
     def on_log(self, args, state, control, logs=None, **kwargs):
