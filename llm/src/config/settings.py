@@ -127,15 +127,7 @@ def get_development_config():
 
 
 def get_model_config(model_type: str = "gpt2-small") -> ModelConfig:
-    """
-    Get model configuration for a specific model type.
-    
-    Args:
-        model_type: One of the keys from model_configs.json
-        
-    Returns:
-        ModelConfig: Configuration for the specified model
-    """
+    """Get model configuration for a specific model type."""
     if model_type not in MODEL_OPTIONS:
         available = ", ".join(MODEL_OPTIONS.keys())
         raise ValueError(f"Model type '{model_type}' not available. Choose from: {available}")
@@ -222,21 +214,7 @@ def add_custom_model_to_config(
     max_sequence_length: int = 512,
     dropout: float = 0.1
 ):
-    """
-    Add a new custom model configuration to the JSON file.
-    
-    Args:
-        model_key: Unique identifier for the model
-        name: Model name
-        description: Description of the model
-        output_dir: Output directory for training
-        n_embd: Embedding dimension
-        n_layer: Number of layers
-        n_head: Number of attention heads
-        vocab_size: Vocabulary size
-        max_sequence_length: Maximum sequence length
-        dropout: Dropout rate
-    """
+    """Add a new custom model configuration to the JSON file."""
     new_model = {
         "name": name,
         "description": description,

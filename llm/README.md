@@ -1,23 +1,23 @@
 # NLP Research Project
 
-Working on instruction-response models using the Alpaca-GPT4 dataset. Experimenting with different architectures and training approaches for text generation tasks.
+Instruction-response models using the Alpaca-GPT4 dataset. Training and evaluation of different architectures for text generation tasks.
 
 ## Setup
 
-Install dependencies and you're good to go:
+Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
 ## Usage
 
-The main work happens in the notebooks. Start with `01_data_exploration.ipynb` to understand the dataset characteristics, then move to `02_model_training.ipynb` for experiments.
+Notebooks provide the main interface. Start with `01_data_exploration.ipynb` for dataset analysis, then `02_model_training.ipynb` for training experiments.
 
-The data exploration notebook covers dataset quality analysis, length distributions, and figures out optimal model configurations based on the data patterns. Found that encoder-decoder architectures work better than decoder-only for this 11x expansion ratio (instruction → response).
+Data exploration covers quality analysis, length distributions, and optimal model configurations. Encoder-decoder architectures perform better than decoder-only for the 11x expansion ratio in this dataset.
 
-For quick testing there are also command line scripts:
+Command line scripts available for testing:
 ```bash
-python scripts/train_model.py --model gpt2-small
+python src/train.py --model gpt2-small --config test
 python scripts/generate_text.py --model gpt2-small --instruction "Explain AI"
 ```
 
@@ -27,23 +27,24 @@ python scripts/generate_text.py --model gpt2-small --instruction "Explain AI"
 llm/
 ├── src/                         # Core code
 │   ├── core/                    # Training logic
-│   ├── data/                    # Data loaders (supports both DB and file loading)
+│   ├── data/                    # Data loaders
 │   └── config/                  # Model configurations
-├── notebooks/                   # Main development environment
-│   ├── 01_data_exploration.ipynb    # Dataset analysis and config planning
+├── notebooks/                   # Development environment
+│   ├── 01_data_exploration.ipynb    # Dataset analysis
 │   └── 02_model_training.ipynb      # Model experiments
 └── scripts/                     # CLI utilities
 ```
 
 ## Configuration
 
-Model configs are in `src/config/model_configs.json`. The data exploration notebook determines optimal parameters like max_position_embeddings (2048 for this dataset) and batch sizes based on actual data characteristics.
+Model configs in `src/config/model_configs.json`. Data exploration determines optimal parameters including max_position_embeddings (2048) and batch sizes based on dataset characteristics.
 
 ## Tracking
 
-Uses WandB for experiment logging. Set `WANDB_API_KEY` in your `.env` file and the notebooks handle the rest.
+Uses WandB for experiment logging. Set `WANDB_API_KEY` in your environment and the system handles logging automatically.
 
-Copy the .env.example to `.env` and fill in your WandB API key, after logging in to https://wandb.ai/authorize:
+Set up environment variables:
 ```bash
 cp .env.example .env
+# Add your WandB API key from https://wandb.ai/authorize
 ```

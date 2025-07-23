@@ -7,7 +7,6 @@ import argparse
 import os
 import sys
 
-# Add the parent directory to the path so we can import from src
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data.loaders import get_dataset_manager
@@ -23,28 +22,22 @@ def main(model_type="gpt2-small"):
     print("Alpaca-GPT4 PyTorch Training Pipeline")
     print("=" * 40)
     
-    # Get model configuration
     model_config = get_model_config(model_type)
     print(f"Using model: {model_config.name}")
     print(f"Output directory: {model_config.output_dir}")
     
-    # Initialize dataset manager
     dataset_manager = get_dataset_manager(data_dir=DEFAULT_DATASET_CONFIG.data_dir)
     
-    # Show dataset size info
     print("\nDataset Information:")
     dataset_manager.print_size_info()
     
-    # Load dataset
     print("\n1. Loading dataset...")
     df = dataset_manager.load_dataset()
     dataset_manager.print_dataset_summary(df)
     
-    # Initialize trainer with configurations
     print("\n2. Initializing PyTorch model...")
     trainer = DialogTrainer(model_config=model_config)
     
-    # Use test configuration for development
     training_config = get_test_config()
     
     # Prepare dataset
@@ -55,7 +48,6 @@ def main(model_type="gpt2-small"):
         max_samples=training_config.max_samples
     )
     
-    # Train the model
     print("\n4. Starting training...")
     trained_model = trainer.train(
         train_dataset, 
@@ -65,7 +57,6 @@ def main(model_type="gpt2-small"):
         learning_rate=training_config.learning_rate
     )
     
-    # Test generation
     print("\n5. Testing trained model...")
     test_instructions = [
         "Give three tips for staying healthy.",
@@ -88,15 +79,12 @@ def analyze_dataset():
     
     dataset_manager = get_dataset_manager(data_dir=DEFAULT_DATASET_CONFIG.data_dir)
     
-    # Show dataset size info
     dataset_manager.print_size_info()
     
-    # Load dataset
     print("\nLoading dataset...")
     df = dataset_manager.load_dataset()
     dataset_manager.print_dataset_summary(df)
     
-    # Show examples of each field type
     print("\nField Examples:")
     print("-" * 30)
     
@@ -119,34 +107,27 @@ def train_production(model_type="gpt2-medium"):
     print("Production Training Mode")
     print("=" * 25)
     
-    # Get model configuration
     model_config = get_model_config(model_type)
     print(f"Using model: {model_config.name}")
     
-    # Initialize dataset manager
     dataset_manager = get_dataset_manager(data_dir=DEFAULT_DATASET_CONFIG.data_dir)
     
-    # Load full dataset
     print("\n1. Loading full dataset...")
     df = dataset_manager.load_dataset()
     dataset_manager.print_dataset_summary(df)
     
-    # Initialize trainer
     print("\n2. Initializing model for production training...")
     trainer = DialogTrainer(model_config=model_config)
     
-    # Use production configuration
     training_config = get_production_config()
     
-    # Prepare full dataset
     print("\n3. Preparing full dataset...")
     train_dataset, eval_dataset = trainer.prepare_dataset(
         df, 
         train_split=training_config.train_split,
-        max_samples=training_config.max_samples  # None for full dataset
+        max_samples=training_config.max_samples
     )
     
-    # Train with production settings
     print("\n4. Starting production training...")
     trained_model = trainer.train(
         train_dataset, 
