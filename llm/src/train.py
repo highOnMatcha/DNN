@@ -84,7 +84,8 @@ def train_single_model(
     model_name: str = "custom-tiny",
     config_type: str = "test",
     max_samples: int = None,
-    project_name: str = "dialog-model-training"
+    project_name: str = "dialog-model-training",
+    resume_from_checkpoint: str = None
 ):
     """Train a single model with logging."""
     print("=" * 60)
@@ -164,7 +165,8 @@ def train_single_model(
             batch_size=training_config.batch_size,
             learning_rate=training_config.learning_rate,
             save_steps=training_config.save_steps,
-            eval_steps=training_config.eval_steps
+            eval_steps=training_config.eval_steps,
+            resume_from_checkpoint=resume_from_checkpoint
         )
         
         training_duration = time.time() - start_time
@@ -327,6 +329,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--resume", "-r",
+        type=str,
+        help="Path to checkpoint directory to resume from"
+    )
+    
+    parser.add_argument(
         "--list-models",
         action="store_true",
         help="List available model configurations and exit"
@@ -354,7 +362,8 @@ Examples:
             model_name=args.model,
             config_type=args.config,
             max_samples=args.samples,
-            project_name=args.project
+            project_name=args.project,
+            resume_from_checkpoint=args.resume
         )
         
         print("Training pipeline completed successfully!")

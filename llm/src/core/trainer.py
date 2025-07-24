@@ -149,7 +149,7 @@ class DialogTrainer:
     
     def train(self, train_dataset, eval_dataset, 
               num_epochs=3, batch_size=4, learning_rate=5e-5,
-              save_steps=500, eval_steps=500):
+              save_steps=500, eval_steps=500, resume_from_checkpoint=None):
         """Train the model."""
         if self.wandb_run:
             training_params = {
@@ -197,7 +197,7 @@ class DialogTrainer:
         
         print("Starting training...")
         start_time = time.time()
-        trainer.train()
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         training_duration = time.time() - start_time
         
         if self.wandb_run:
