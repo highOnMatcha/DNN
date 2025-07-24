@@ -105,7 +105,7 @@ class DialogTrainer:
         try:
             from ..config.settings import DEFAULT_MODEL_CONFIG
         except ImportError:
-            from src.config.settings import DEFAULT_MODEL_CONFIG
+            from config.settings import DEFAULT_MODEL_CONFIG
         
         self.config = model_config or DEFAULT_MODEL_CONFIG
         self.wandb_run = wandb_run
@@ -176,7 +176,7 @@ class DialogTrainer:
         try:
             from .models import create_custom_model
         except ImportError:
-            from src.core.models import create_custom_model
+            from core.models import create_custom_model
         self.model = create_custom_model(self.config)
         self.model.to(self.device)
     
