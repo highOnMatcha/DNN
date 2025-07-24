@@ -1,28 +1,63 @@
 """
-Custom model architectures for building models from scratch.
+Custom model architectures for building transformer models from scratch.
+
+This module implements a custom GPT-style transformer architecture with multi-head
+attention, position embeddings, and causal language modeling capabilities. It provides
+both the configuration class and the complete model implementation compatible with
+the HuggingFace transformers library.
 """
+
+import math
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-import math
-from transformers import PreTrainedModel, PretrainedConfig
+from transformers.modeling_utils import PreTrainedModel
+from transformers.configuration_utils import PretrainedConfig
+from transformers.modeling_outputs import CausalLMOutput
 
 
 class CustomGPTConfig(PretrainedConfig):
-    """Configuration for custom GPT model."""
+    """
+    Configuration class for custom GPT model.
+    
+    This class stores all the configuration parameters needed to define a custom
+    GPT-style transformer model, including architecture dimensions, vocabulary size,
+    and training hyperparameters.
+    
+    Attributes:
+        vocab_size: Size of the vocabulary.
+        n_embd: Dimensionality of the embeddings and hidden states.
+        n_layer: Number of transformer layers.
+        n_head: Number of attention heads in each layer.
+        max_sequence_length: Maximum sequence length for position embeddings.
+        dropout: Dropout probability for regularization.
+    """
     
     model_type = "custom_gpt"
     
     def __init__(
         self,
-        vocab_size=50257,
-        n_embd=768,
-        n_layer=12,
-        n_head=12,
-        max_sequence_length=1024,
-        dropout=0.1,
+        vocab_size: int = 50257,
+        n_embd: int = 768,
+        n_layer: int = 12,
+        n_head: int = 12,
+        max_sequence_length: int = 1024,
+        dropout: float = 0.1,
         **kwargs
-    ):
+    ) -> None:
+        """
+        Initialize the configuration.
+        
+        Args:
+            vocab_size: Size of the vocabulary.
+            n_embd: Dimensionality of the embeddings and hidden states.
+            n_layer: Number of transformer layers.
+            n_head: Number of attention heads in each layer.
+            max_sequence_length: Maximum sequence length for position embeddings.
+            dropout: Dropout probability for regularization.
+            **kwargs: Additional keyword arguments passed to parent class.
+        """
         super().__init__(**kwargs)
         self.vocab_size = vocab_size
         self.n_embd = n_embd
@@ -33,9 +68,33 @@ class CustomGPTConfig(PretrainedConfig):
 
 
 class MultiHeadAttention(nn.Module):
-    """Multi-head self-attention mechanism."""
+    """
+    Multi-head self-attention mechanism with causal masking.
     
-    def __init__(self, config):
+    This implementation follows the scaled dot-product attention mechanism
+    from "Attention is All You Need" with causal masking for autoregressive
+    language modeling.
+    
+    Attributes:
+        n_embd: Embedding dimension.
+        n_head: Number of attention heads.
+        head_dim: Dimension per attention head.
+        qkv: Linear layer for query, key, value projections.
+        proj: Output projection layer.
+        dropout: Dropout layer for attention weights.
+        causal_mask: Lower triangular mask for causal attention.
+    """
+    
+    def __init__(self, config: CustomGPTConfig) -> None:
+        """
+        Initialize the multi-head attention layer.
+        
+        Args:
+            config: Model configuration containing architecture parameters.
+        
+        Raises:
+            AssertionError: If n_embd is not divisible by n_head.
+        """
         super().__init__()
         self.n_embd = config.n_embd
         self.n_head = config.n_head
@@ -48,14 +107,23 @@ class MultiHeadAttention(nn.Module):
         self.proj = nn.Linear(self.n_embd, self.n_embd)
         self.dropout = nn.Dropout(config.dropout)
         
-        # Causal mask
+        # Causal mask - register as buffer so it moves with model device
         self.register_buffer(
             "causal_mask",
             torch.tril(torch.ones(config.max_sequence_length, config.max_sequence_length))
             .view(1, 1, config.max_sequence_length, config.max_sequence_length)
         )
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through multi-head attention.
+        
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, n_embd).
+        
+        Returns:
+            Output tensor of shape (batch_size, sequence_length, n_embd).
+        """
         B, T, C = x.size()  # batch_size, sequence_length, n_embd
         
         # Calculate Q, K, V
@@ -87,9 +155,24 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    """Position-wise feed-forward network."""
+    """
+    Position-wise feed-forward network.
     
-    def __init__(self, config):
+    This implements the feed-forward component of a transformer block,
+    consisting of two linear transformations with a GELU activation
+    and dropout for regularization.
+    
+    Attributes:
+        net: Sequential network with linear layers, activation, and dropout.
+    """
+    
+    def __init__(self, config: CustomGPTConfig) -> None:
+        """
+        Initialize the feed-forward network.
+        
+        Args:
+            config: Model configuration containing architecture parameters.
+        """
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(config.n_embd, 4 * config.n_embd),
@@ -98,33 +181,93 @@ class FeedForward(nn.Module):
             nn.Dropout(config.dropout)
         )
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the feed-forward network.
+        
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, n_embd).
+        
+        Returns:
+            Output tensor of the same shape as input.
+        """
         return self.net(x)
 
 
 class TransformerBlock(nn.Module):
-    """Transformer block with attention and feed-forward."""
+    """
+    Transformer block with attention and feed-forward components.
     
-    def __init__(self, config):
+    This implements a single transformer layer using pre-norm architecture
+    with residual connections around both the attention and feed-forward
+    sub-layers.
+    
+    Attributes:
+        ln1: Layer normalization before attention.
+        attn: Multi-head self-attention layer.
+        ln2: Layer normalization before feed-forward.
+        ffn: Feed-forward network.
+    """
+    
+    def __init__(self, config: CustomGPTConfig) -> None:
+        """
+        Initialize the transformer block.
+        
+        Args:
+            config: Model configuration containing architecture parameters.
+        """
         super().__init__()
         self.ln1 = nn.LayerNorm(config.n_embd)
         self.attn = MultiHeadAttention(config)
         self.ln2 = nn.LayerNorm(config.n_embd)
         self.ffn = FeedForward(config)
     
-    def forward(self, x):
-        # Pre-norm architecture
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the transformer block.
+        
+        Args:
+            x: Input tensor of shape (batch_size, sequence_length, n_embd).
+        
+        Returns:
+            Output tensor of the same shape as input.
+        """
+        # Pre-norm architecture with residual connections
         x = x + self.attn(self.ln1(x))
         x = x + self.ffn(self.ln2(x))
         return x
 
 
 class CustomGPTModel(PreTrainedModel):
-    """Custom GPT model built from scratch."""
+    """
+    Custom GPT model built from scratch with transformer architecture.
+    
+    This model implements a GPT-style autoregressive transformer for causal
+    language modeling. It includes token and position embeddings, multiple
+    transformer layers, and a language modeling head for next-token prediction.
+    
+    The model is compatible with HuggingFace's training infrastructure and
+    supports standard transformer operations like training and generation.
+    
+    Attributes:
+        config: Model configuration object.
+        token_embedding: Token embedding layer.
+        position_embedding: Position embedding layer.
+        dropout: Dropout layer for embeddings.
+        blocks: List of transformer blocks.
+        ln_f: Final layer normalization.
+        lm_head: Language modeling head for token prediction.
+    """
     
     config_class = CustomGPTConfig
     
-    def __init__(self, config):
+    def __init__(self, config: CustomGPTConfig) -> None:
+        """
+        Initialize the custom GPT model.
+        
+        Args:
+            config: Configuration object containing model architecture parameters.
+        """
         super().__init__(config)
         self.config = config
         
@@ -151,8 +294,18 @@ class CustomGPTModel(PreTrainedModel):
         print(f"  Embedding dim: {config.n_embd}")
         print(f"  Attention heads: {config.n_head}")
     
-    def _init_weights(self, module):
-        """Initialize model weights."""
+    def _init_weights(self, module: nn.Module) -> None:
+        """
+        Initialize model weights using standard transformer initialization.
+        
+        This method applies proper weight initialization for different layer types:
+        - Linear layers: Normal distribution with std=0.02
+        - Embedding layers: Normal distribution with std=0.02  
+        - LayerNorm: Zero bias, unit weight
+        
+        Args:
+            module: PyTorch module to initialize.
+        """
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -163,7 +316,20 @@ class CustomGPTModel(PreTrainedModel):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
     
-    def forward(self, input_ids, attention_mask=None, labels=None):
+    def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, 
+                labels: Optional[torch.Tensor] = None) -> CausalLMOutput:
+        """
+        Forward pass through the model for causal language modeling.
+        
+        Args:
+            input_ids: Token indices of shape (batch_size, sequence_length).
+            attention_mask: Attention mask (currently unused in this implementation).
+            labels: Target token indices for loss computation. If provided, loss
+                   will be computed using teacher forcing.
+        
+        Returns:
+            CausalLMOutput containing logits and optional loss.
+        """
         B, T = input_ids.size()
         
         # Token embeddings
@@ -200,7 +366,6 @@ class CustomGPTModel(PreTrainedModel):
             )
         
         # Return in format expected by HuggingFace Trainer
-        from transformers.modeling_outputs import CausalLMOutput
         return CausalLMOutput(
             loss=loss,
             logits=logits,
@@ -208,8 +373,23 @@ class CustomGPTModel(PreTrainedModel):
             attentions=None
         )
     
-    def generate(self, input_ids, max_length=50, temperature=1.0, top_k=50):
-        """Simple generation method."""
+    def generate(self, input_ids: torch.Tensor, max_length: int = 50, 
+                temperature: float = 1.0, top_k: int = 50) -> torch.Tensor:
+        """
+        Simple generation method for autoregressive text generation.
+        
+        This method generates text token by token using top-k sampling.
+        It's a basic implementation suitable for inference and testing.
+        
+        Args:
+            input_ids: Input token sequence of shape (batch_size, sequence_length).
+            max_length: Maximum number of tokens to generate.
+            temperature: Sampling temperature for controlling randomness.
+            top_k: Number of top tokens to consider for sampling.
+        
+        Returns:
+            Generated token sequence including the input prompt.
+        """
         self.eval()
         
         with torch.no_grad():
@@ -240,8 +420,20 @@ class CustomGPTModel(PreTrainedModel):
         return input_ids
 
 
-def create_custom_model(config):
-    """Factory function to create a custom model."""
+def create_custom_model(config: Any) -> CustomGPTModel:
+    """
+    Factory function to create a custom model instance.
+    
+    This function creates a CustomGPTModel with the specified configuration
+    parameters, handling the conversion from the training configuration format
+    to the model configuration format.
+    
+    Args:
+        config: Configuration object containing model architecture parameters.
+    
+    Returns:
+        Initialized CustomGPTModel instance.
+    """
     model_config = CustomGPTConfig(
         vocab_size=config.vocab_size,
         n_embd=config.n_embd,

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 Single model training pipeline with WandB integration.
+
+This module provides a comprehensive training pipeline for dialog models with
+experiment tracking, model evaluation, and generation testing capabilities.
+It supports both development and production training configurations with
+extensive logging and monitoring.
 """
 
 import argparse
@@ -9,6 +14,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Tuple, Dict, Any
 
 current_dir = Path(__file__).parent
 parent_dir = current_dir.parent
@@ -41,8 +47,23 @@ except ImportError:
     from src.data.loaders import get_dataset_manager
 
 
-def setup_wandb(project_name="dialog-model-training", model_name="unknown", config_type="test"):
-    """Setup WandB authentication and project initialization."""
+def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "unknown", 
+               config_type: str = "test") -> Optional[Any]:
+    """
+    Setup WandB authentication and project initialization.
+    
+    This function handles WandB login, project initialization, and run configuration
+    for experiment tracking. It gracefully handles authentication failures and
+    missing API keys.
+    
+    Args:
+        project_name: Name of the WandB project for organizing experiments.
+        model_name: Name of the model being trained for run identification.
+        config_type: Type of configuration being used (test/dev/prod).
+    
+    Returns:
+        WandB run object if initialization succeeds, None otherwise.
+    """
     load_dotenv()
     wandb_api_key = os.getenv('WANDB_API_KEY')
     
@@ -83,11 +104,27 @@ def setup_wandb(project_name="dialog-model-training", model_name="unknown", conf
 def train_single_model(
     model_name: str = "custom-tiny",
     config_type: str = "test",
-    max_samples: int = None,
+    max_samples: Optional[int] = None,
     project_name: str = "dialog-model-training",
-    resume_from_checkpoint: str = None
-):
-    """Train a single model with logging."""
+    resume_from_checkpoint: Optional[str] = None
+) -> Tuple[Any, Dict[str, float]]:
+    """
+    Train a single model with comprehensive logging and evaluation.
+    
+    This function orchestrates the complete training pipeline including dataset
+    loading, model initialization, training execution, and generation testing.
+    It provides detailed progress reporting and optional WandB integration.
+    
+    Args:
+        model_name: Identifier for the model configuration to use.
+        config_type: Training configuration type (test/development/production).
+        max_samples: Maximum number of training samples to use (None for all).
+        project_name: WandB project name for experiment tracking.
+        resume_from_checkpoint: Path to checkpoint directory for resuming training.
+    
+    Returns:
+        Tuple of (trained_trainer, generation_metrics_dict).
+    """
     print("=" * 60)
     print("SINGLE MODEL TRAINING PIPELINE")
     print("=" * 60)
@@ -189,10 +226,10 @@ def train_single_model(
             ])
         
         generation_metrics = {
-            "total_time": 0,
-            "total_responses": 0,
-            "total_length": 0,
-            "total_words": 0
+            "total_time": 0.0,
+            "total_responses": 0.0,
+            "total_length": 0.0,
+            "total_words": 0.0
         }
         
         for i, instruction in enumerate(test_instructions, 1):
@@ -286,8 +323,14 @@ def train_single_model(
             print("WandB run completed")
 
 
-def main():
-    """Main entry point with command-line argument parsing."""
+def main() -> None:
+    """
+    Main entry point with command-line argument parsing.
+    
+    Parses command-line arguments and executes the training pipeline
+    with the specified configuration. Provides comprehensive help
+    and examples for different training scenarios.
+    """
     parser = argparse.ArgumentParser(
         description="Single Model Training Pipeline with WandB Integration",
         formatter_class=argparse.RawDescriptionHelpFormatter,

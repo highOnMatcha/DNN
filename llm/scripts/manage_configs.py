@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """
 Configuration management CLI utility.
+
+This script provides a command-line interface for managing model configurations
+including listing available models, adding new custom model configurations,
+and displaying detailed information about specific model configurations.
 """
 
 import argparse
 import sys
 import os
+from typing import NoReturn
 
 # Add the parent directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +22,13 @@ from src.config.settings import (
 )
 
 
-def main():
+def main() -> NoReturn:
+    """
+    Main entry point for configuration management utility.
+    
+    Parses command-line arguments and executes the requested configuration
+    management operation (list, add, or show model configurations).
+    """
     parser = argparse.ArgumentParser(description="Manage model configurations")
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
@@ -42,7 +53,7 @@ def main():
     
     if not args.command:
         parser.print_help()
-        return
+        sys.exit(0)
     
     if args.command == 'list':
         list_available_models()
@@ -76,6 +87,9 @@ def main():
                 print(f"  Dropout: {config.dropout}")
         except ValueError as e:
             print(f"Error: {e}")
+            sys.exit(1)
+    
+    sys.exit(0)
 
 
 if __name__ == "__main__":

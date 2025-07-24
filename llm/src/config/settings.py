@@ -1,19 +1,33 @@
 """
 Configuration settings for training and model parameters.
+
+This module provides comprehensive configuration management for machine learning
+training pipelines, including model architecture parameters, training hyperparameters,
+and dataset configuration. It supports both JSON-based external configuration
+and programmatic configuration through dataclasses.
 """
 
 import json
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 # Path to external model configurations
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "model_configs.json")
 
 
-def load_model_configs():
-    """Load model configurations from JSON file."""
+def load_model_configs() -> Dict[str, Any]:
+    """
+    Load model configurations from JSON file.
+    
+    Attempts to load configuration data from the JSON file. If the file
+    doesn't exist, returns a default empty configuration structure.
+    
+    Returns:
+        Dictionary containing model configurations with keys for
+        pretrained_models, custom_models, and training_configs.
+    """
     try:
         with open(CONFIG_FILE, 'r') as f:
             return json.load(f)
@@ -32,7 +46,23 @@ _MODEL_CONFIGS = load_model_configs()
 
 @dataclass
 class ModelConfig:
-    """Model configuration parameters."""
+    """
+    Model configuration parameters for both pre-trained and custom models.
+    
+    This class defines all parameters needed to configure a model, including
+    both pre-trained models for fine-tuning and custom models built from scratch.
+    
+    Attributes:
+        name: Model name or path (e.g., 'gpt2', 'microsoft/DialoGPT-medium').
+        output_dir: Directory where trained model and checkpoints will be saved.
+        max_sequence_length: Maximum sequence length for input processing.
+        from_scratch: Whether to build model from scratch or use pre-trained.
+        vocab_size: Vocabulary size for custom models.
+        n_embd: Embedding dimension for transformer layers.
+        n_layer: Number of transformer layers.
+        n_head: Number of attention heads per layer.
+        dropout: Dropout probability for regularization.
+    """
     name: str = "gpt2"  # Default to base GPT-2
     output_dir: str = "./trained_model"
     max_sequence_length: int = 512
@@ -47,8 +77,16 @@ class ModelConfig:
 
 
 # Predefined model configurations loaded from JSON
-def get_all_model_options():
-    """Get all available model options from JSON config."""
+def get_all_model_options() -> Dict[str, Any]:
+    """
+    Get all available model options from JSON configuration.
+    
+    Combines both pre-trained and custom model configurations into a single
+    dictionary for easy access and validation.
+    
+    Returns:
+        Dictionary containing all available model configurations.
+    """
     all_models = {}
     all_models.update(_MODEL_CONFIGS.get("pretrained_models", {}))
     all_models.update(_MODEL_CONFIGS.get("custom_models", {}))
@@ -60,7 +98,25 @@ MODEL_OPTIONS = get_all_model_options()
 
 @dataclass
 class TrainingConfig:
-    """Training configuration parameters."""
+    """
+    Training configuration parameters for model training.
+    
+    This class defines all hyperparameters and settings needed for the training
+    process, including optimization parameters, logging frequency, and data
+    processing settings.
+    
+    Attributes:
+        num_epochs: Number of training epochs to run.
+        batch_size: Batch size for training and evaluation.
+        learning_rate: Learning rate for the optimizer.
+        warmup_steps: Number of warmup steps for learning rate scheduling.
+        logging_steps: Frequency of logging training metrics.
+        save_steps: Frequency of saving model checkpoints.
+        eval_steps: Frequency of running evaluation.
+        weight_decay: Weight decay coefficient for regularization.
+        max_samples: Maximum number of samples to use (None for all data).
+        train_split: Fraction of data to use for training vs evaluation.
+    """
     num_epochs: int = 1
     batch_size: int = 2
     learning_rate: float = 5e-5
@@ -75,7 +131,17 @@ class TrainingConfig:
 
 @dataclass
 class DatasetConfig:
-    """Dataset configuration parameters."""
+    """
+    Dataset configuration parameters for data loading and processing.
+    
+    This class defines settings for dataset management, including file paths,
+    download behavior, and caching options.
+    
+    Attributes:
+        data_dir: Directory containing dataset files.
+        save_to_disk: Whether to save downloaded datasets to disk.
+        force_download: Whether to force re-download of existing datasets.
+    """
     data_dir: str = "data"  # Keep pointing to the existing data directory
     save_to_disk: bool = True
     force_download: bool = False
@@ -87,8 +153,16 @@ DEFAULT_TRAINING_CONFIG = TrainingConfig()
 DEFAULT_DATASET_CONFIG = DatasetConfig()
 
 
-def get_production_config():
-    """Get configuration for production training."""
+def get_production_config() -> TrainingConfig:
+    """
+    Get configuration for production training.
+    
+    Loads production training parameters from JSON configuration or uses
+    sensible defaults for full-scale training with larger datasets.
+    
+    Returns:
+        TrainingConfig instance configured for production training.
+    """
     prod_config = _MODEL_CONFIGS.get("training_configs", {}).get("production", {})
     return TrainingConfig(
         num_epochs=prod_config.get("num_epochs", 3),
@@ -100,8 +174,16 @@ def get_production_config():
     )
 
 
-def get_test_config():
-    """Get configuration for testing/development."""
+def get_test_config() -> TrainingConfig:
+    """
+    Get configuration for testing and development.
+    
+    Loads test configuration parameters optimized for quick iteration
+    and debugging with smaller datasets and fewer epochs.
+    
+    Returns:
+        TrainingConfig instance configured for testing.
+    """
     test_config = _MODEL_CONFIGS.get("training_configs", {}).get("test", {})
     return TrainingConfig(
         num_epochs=test_config.get("num_epochs", 1),
@@ -113,8 +195,16 @@ def get_test_config():
     )
 
 
-def get_development_config():
-    """Get configuration for development training."""
+def get_development_config() -> TrainingConfig:
+    """
+    Get configuration for development training.
+    
+    Loads development configuration parameters that balance training time
+    with model quality for intermediate-scale experiments.
+    
+    Returns:
+        TrainingConfig instance configured for development.
+    """
     dev_config = _MODEL_CONFIGS.get("training_configs", {}).get("development", {})
     return TrainingConfig(
         num_epochs=dev_config.get("num_epochs", 2),
@@ -127,7 +217,22 @@ def get_development_config():
 
 
 def get_model_config(model_type: str = "gpt2-small") -> ModelConfig:
-    """Get model configuration for a specific model type."""
+    """
+    Get model configuration for a specific model type.
+    
+    Retrieves configuration parameters for the specified model type from
+    the loaded JSON configuration. Handles both pre-trained and custom
+    model configurations.
+    
+    Args:
+        model_type: Identifier for the model configuration to retrieve.
+    
+    Returns:
+        ModelConfig instance with the specified model parameters.
+    
+    Raises:
+        ValueError: If the specified model type is not available.
+    """
     if model_type not in MODEL_OPTIONS:
         available = ", ".join(MODEL_OPTIONS.keys())
         raise ValueError(f"Model type '{model_type}' not available. Choose from: {available}")
@@ -157,8 +262,13 @@ def get_model_config(model_type: str = "gpt2-small") -> ModelConfig:
     return config
 
 
-def list_available_models():
-    """Print available model configurations."""
+def list_available_models() -> None:
+    """
+    Print available model configurations in a formatted display.
+    
+    Displays all available model configurations grouped by type (pre-trained
+    vs custom) along with their key parameters and descriptions.
+    """
     print("Available Model Configurations:")
     print("=" * 40)
     
@@ -213,8 +323,26 @@ def add_custom_model_to_config(
     vocab_size: int = 50257,
     max_sequence_length: int = 512,
     dropout: float = 0.1
-):
-    """Add a new custom model configuration to the JSON file."""
+) -> None:
+    """
+    Add a new custom model configuration to the JSON file.
+    
+    Creates a new custom model configuration with the specified parameters
+    and saves it to the configuration file. This allows dynamic addition
+    of new model architectures without manual JSON editing.
+    
+    Args:
+        model_key: Unique identifier for the model configuration.
+        name: Human-readable name for the model.
+        description: Description of the model's purpose or characteristics.
+        output_dir: Directory where the model will be saved.
+        n_embd: Embedding dimension for the transformer.
+        n_layer: Number of transformer layers.
+        n_head: Number of attention heads per layer.
+        vocab_size: Size of the vocabulary.
+        max_sequence_length: Maximum sequence length.
+        dropout: Dropout probability for regularization.
+    """
     new_model = {
         "name": name,
         "description": description,

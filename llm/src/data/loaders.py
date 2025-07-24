@@ -1,19 +1,41 @@
 """
 Dataset utilities for handling dialog datasets.
-Functions for downloading, loading, and managing dataset storage.
+
+This module provides comprehensive dataset management functionality including
+downloading, loading, preprocessing, and database operations for machine learning
+datasets. It supports both local file storage and PostgreSQL database integration
+for scalable data management.
 """
 
-import pandas as pd
 import os
+from typing import Optional, Dict, Any, Literal
+
+import pandas as pd
 from sqlalchemy import create_engine, text
-from typing import Optional
 
 
 class DatasetManager:
-    """Manages dataset operations including download, storage, and database operations."""
+    """
+    Manages dataset operations including download, storage, and preprocessing.
     
-    def __init__(self, data_dir: str = "data"):
-        """Initialize DatasetManager with data directory."""
+    This class provides a comprehensive interface for handling machine learning
+    datasets, including downloading from remote sources, local file management,
+    and basic dataset analysis. It's designed to work with the Alpaca-GPT4
+    dataset but can be extended for other datasets.
+    
+    Attributes:
+        data_dir: Directory for storing dataset files.
+        dataset_url: URL for downloading the dataset.
+        dataset_file: Local path to the dataset file.
+    """
+    
+    def __init__(self, data_dir: str = "data") -> None:
+        """
+        Initialize DatasetManager with data directory.
+        
+        Args:
+            data_dir: Directory path for storing dataset files.
+        """
         self.data_dir = data_dir
         self.dataset_url = "hf://datasets/vicgalle/alpaca-gpt4/data/train-00000-of-00001-6ef3991c06080e14.parquet"
         self.dataset_file = os.path.join(self.data_dir, "alpaca-gpt4.csv")
@@ -21,7 +43,20 @@ class DatasetManager:
         os.makedirs(self.data_dir, exist_ok=True)
     
     def load_dataset(self, force_download: bool = False, save_to_disk: bool = True) -> pd.DataFrame:
-        """Load the Alpaca-GPT4 dataset from local file or download if not available."""
+        """
+        Load the Alpaca-GPT4 dataset from local file or download if not available.
+        
+        This method attempts to load the dataset from a local CSV file first.
+        If the file doesn't exist or force_download is True, it downloads
+        the dataset from the remote Parquet file.
+        
+        Args:
+            force_download: Whether to force re-download even if local file exists.
+            save_to_disk: Whether to save the downloaded dataset to local storage.
+        
+        Returns:
+            DataFrame containing the loaded dataset.
+        """
         if os.path.exists(self.dataset_file) and not force_download:
             print(f"Loading dataset from local file: {self.dataset_file}")
             df = pd.read_csv(self.dataset_file)
@@ -38,12 +73,13 @@ class DatasetManager:
         
         return df
     
-    def get_dataset_size_info(self) -> dict:
+    def get_dataset_size_info(self) -> Dict[str, Any]:
         """
         Get information about dataset size and disk usage.
         
         Returns:
-            dict: Size information including local file size, estimated download size, etc.
+            Dictionary containing size information including local file size,
+            estimated download size, and storage details.
         """
         info = {
             'local_file_exists': os.path.exists(self.dataset_file),
@@ -57,8 +93,13 @@ class DatasetManager:
         
         return info
     
-    def print_size_info(self):
-        """Print dataset size information."""
+    def print_size_info(self) -> None:
+        """
+        Print dataset size information in a formatted display.
+        
+        Displays information about local file existence, file sizes,
+        and estimated download requirements.
+        """
         info = self.get_dataset_size_info()
         
         print("Dataset Size Information:")
@@ -71,8 +112,17 @@ class DatasetManager:
             print(f"Estimated download size: {info['estimated_download_size_mb']} MB")
             print("File will be downloaded on first use")
     
-    def get_dataset_info(self, df: pd.DataFrame) -> dict:
-        """Get dataset information."""
+    def get_dataset_info(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Get comprehensive dataset information and statistics.
+        
+        Args:
+            df: DataFrame to analyze.
+        
+        Returns:
+            Dictionary containing dataset shape, columns, data types,
+            null counts, and memory usage information.
+        """
         info = {
             'shape': df.shape,
             'columns': df.columns.tolist(),
@@ -82,8 +132,13 @@ class DatasetManager:
         }
         return info
     
-    def print_dataset_summary(self, df: pd.DataFrame):
-        """Print dataset summary."""
+    def print_dataset_summary(self, df: pd.DataFrame) -> None:
+        """
+        Print comprehensive dataset summary including statistics and sample data.
+        
+        Args:
+            df: DataFrame to summarize.
+        """
         info = self.get_dataset_info(df)
         
         print("Dataset Summary:")
@@ -104,14 +159,40 @@ class DatasetManager:
 
 
 class DatabaseManager:
-    """Manages PostgreSQL database operations for the dataset."""
+    """
+    Manages PostgreSQL database operations for dataset storage and retrieval.
     
-    def __init__(self):
-        """Initialize DatabaseManager with environment variables."""
+    This class provides a comprehensive interface for database operations
+    including saving DataFrames to PostgreSQL tables, loading data from
+    tables, and checking table existence. It handles connection management
+    and error handling for robust database operations.
+    
+    Attributes:
+        connection_string: PostgreSQL connection string built from environment variables.
+    """
+    
+    def __init__(self) -> None:
+        """
+        Initialize DatabaseManager with environment-based connection configuration.
+        
+        Reads database connection parameters from environment variables
+        and constructs the connection string.
+        """
         self.connection_string = self._build_connection_string()
     
     def _build_connection_string(self) -> str:
-        """Build PostgreSQL connection string from environment variables."""
+        """
+        Build PostgreSQL connection string from environment variables.
+        
+        Reads database configuration from environment variables including
+        host, port, database name, username, and password.
+        
+        Returns:
+            Complete PostgreSQL connection string.
+        
+        Raises:
+            ValueError: If required environment variables are not set.
+        """
         db_host = os.getenv('DB_HOST', 'localhost')
         db_port = os.getenv('DB_PORT', '5432')
         db_name = os.getenv('DB_NAME', 'llm')
@@ -124,11 +205,25 @@ class DatabaseManager:
         return f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     
     def save_to_database(self, df: pd.DataFrame, table_name: str = "alpaca_gpt4_dataset", 
-                        if_exists: str = 'replace') -> bool:
-        """Save DataFrame to PostgreSQL database."""
+                        if_exists: Literal['replace', 'append', 'fail'] = 'replace') -> bool:
+        """
+        Save DataFrame to PostgreSQL database table.
+        
+        Saves the provided DataFrame to a PostgreSQL table with proper
+        data cleaning and verification of the upload.
+        
+        Args:
+            df: DataFrame to save to the database.
+            table_name: Name of the database table to create/update.
+            if_exists: How to handle existing table ('replace', 'append', 'fail').
+        
+        Returns:
+            True if save operation succeeded, False otherwise.
+        """
         try:
             engine = create_engine(self.connection_string)
             
+            # Clean the dataframe
             df_clean = df.copy()
             df_clean['input'] = df_clean['input'].fillna('')
             
@@ -146,8 +241,10 @@ class DatabaseManager:
             # Verify the upload
             with engine.connect() as connection:
                 result = connection.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
-                count = result.fetchone()[0]
-                print(f"Verified: {count} rows in database table")
+                row = result.fetchone()
+                if row is not None:
+                    count = row[0]
+                    print(f"Verified: {count} rows in database table")
             
             return True
             
@@ -156,7 +253,17 @@ class DatabaseManager:
             return False
     
     def load_from_database(self, table_name: str = "alpaca_gpt4_dataset") -> Optional[pd.DataFrame]:
-        """Load DataFrame from PostgreSQL database."""
+        """
+        Load DataFrame from PostgreSQL database table.
+        
+        Retrieves data from the specified table and returns it as a DataFrame.
+        
+        Args:
+            table_name: Name of the database table to load from.
+        
+        Returns:
+            DataFrame containing the table data, or None if load failed.
+        """
         try:
             engine = create_engine(self.connection_string)
             df = pd.read_sql_table(table_name, engine)
@@ -168,23 +275,51 @@ class DatabaseManager:
             return None
     
     def table_exists(self, table_name: str) -> bool:
-        """Check if a table exists in the database."""
+        """
+        Check if a table exists in the database.
+        
+        Args:
+            table_name: Name of the table to check.
+        
+        Returns:
+            True if table exists, False otherwise.
+        """
         try:
             engine = create_engine(self.connection_string)
             with engine.connect() as connection:
                 result = connection.execute(text(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)"
-                ), (table_name,))
-                return result.fetchone()[0]
+                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name)"
+                ), {"table_name": table_name})
+                row = result.fetchone()
+                return row[0] if row is not None else False
         except Exception:
             return False
 
 
 def get_dataset_manager(data_dir: str = "data") -> DatasetManager:
-    """Factory function to create a DatasetManager instance."""
+    """
+    Factory function to create a DatasetManager instance.
+    
+    This function provides a convenient way to create DatasetManager instances
+    with custom data directories while maintaining consistent initialization.
+    
+    Args:
+        data_dir: Directory path for dataset storage.
+    
+    Returns:
+        Initialized DatasetManager instance.
+    """
     return DatasetManager(data_dir)
 
 
 def get_database_manager() -> DatabaseManager:
-    """Factory function to create a DatabaseManager instance."""
+    """
+    Factory function to create a DatabaseManager instance.
+    
+    This function provides a convenient way to create DatabaseManager instances
+    with environment-based configuration.
+    
+    Returns:
+        Initialized DatabaseManager instance.
+    """
     return DatabaseManager()

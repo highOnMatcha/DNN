@@ -2,6 +2,7 @@
 # Install after root requirements: pip install -r requirements.txt
 
 # Deep Learning for NLP
+--extra-index-url https://download.pytorch.org/whl/nightly/cu128 # For CUDA 12.8 support, more recent GPU drivers
 torch>=2.0.0
 transformers>=4.30.0
 accelerate>=0.26.0

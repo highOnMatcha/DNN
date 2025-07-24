@@ -1,29 +1,55 @@
 """
 Dialog model trainer with PyTorch and Transformers integration.
-Supports both pre-trained fine-tuning and custom model training from scratch.
+
+This module provides a comprehensive training framework for dialog datasets, supporting
+both pre-trained model fine-tuning and custom model training from scratch. It includes
+WandB integration for experiment tracking and monitoring.
 """
 
-import torch
 import os
 import time
-from transformers import (
-    AutoTokenizer, AutoModelForCausalLM, 
-    TrainingArguments, Trainer,
-    DataCollatorForLanguageModeling,
-    TrainerCallback
-)
+from typing import Optional, Tuple, Any, Union
+
+import torch
 from datasets import Dataset as HFDataset
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers.training_args import TrainingArguments
+from transformers.trainer import Trainer
+from transformers.data.data_collator import DataCollatorForLanguageModeling
+from transformers.trainer_callback import TrainerCallback
 
 
 class WandBCallback(TrainerCallback):
-    """Centralized WandB logging callback."""
+    """
+    Centralized WandB logging callback for training metrics and system monitoring.
     
-    def __init__(self, wandb_run=None):
-        self.wandb_run = wandb_run
-        self.start_time = None
-        self.logged_model_info = False
+    This callback integrates with Weights & Biases to track training progress,
+    model parameters, and system resources during training. It automatically
+    logs GPU memory usage and training duration.
+    """
+    
+    def __init__(self, wandb_run: Optional[Any] = None) -> None:
+        """
+        Initialize the WandB callback.
         
-    def on_train_begin(self, args, state, control, **kwargs):
+        Args:
+            wandb_run: Active WandB run instance for logging metrics. If None,
+                      no logging will be performed.
+        """
+        self.wandb_run = wandb_run
+        self.start_time: Optional[float] = None
+        self.logged_model_info: bool = False
+        
+    def on_train_begin(self, args: TrainingArguments, state: Any, control: Any, **kwargs: Any) -> None:
+        """
+        Called at the beginning of training to initialize model watching.
+        
+        Args:
+            args: Training arguments from the Trainer.
+            state: Current training state.
+            control: Training control object.
+            **kwargs: Additional keyword arguments including the model.
+        """
         if self.wandb_run and not self.logged_model_info:
             self.start_time = time.time()
             model = kwargs.get('model')
@@ -31,7 +57,18 @@ class WandBCallback(TrainerCallback):
                 self.wandb_run.watch(model, log="all", log_freq=1, log_graph=False)
                 self.logged_model_info = True
     
-    def on_log(self, args, state, control, logs=None, **kwargs):
+    def on_log(self, args: TrainingArguments, state: Any, control: Any, 
+               logs: Optional[dict] = None, **kwargs: Any) -> None:
+        """
+        Called on each logging step to add system metrics.
+        
+        Args:
+            args: Training arguments from the Trainer.
+            state: Current training state.
+            control: Training control object.
+            logs: Dictionary of logged metrics to be augmented.
+            **kwargs: Additional keyword arguments.
+        """
         if self.wandb_run and logs:
             if torch.cuda.is_available():
                 logs["system/gpu_memory_gb"] = torch.cuda.memory_allocated() / 1e9
@@ -41,9 +78,30 @@ class WandBCallback(TrainerCallback):
 
 
 class DialogTrainer:
-    """Main trainer class for dialog datasets."""
+    """
+    Main trainer class for dialog datasets.
     
-    def __init__(self, model_config=None, wandb_run=None):
+    This class handles the complete training pipeline for dialog models, including
+    dataset preparation, model initialization (both pre-trained and custom), training
+    with WandB integration, and text generation capabilities.
+    
+    Attributes:
+        config: Model configuration object containing architecture parameters.
+        wandb_run: Optional WandB run instance for experiment tracking.
+        device: PyTorch device (CPU or CUDA) for model computation.
+        tokenizer: Tokenizer for text preprocessing.
+        model: The neural network model (pre-trained or custom).
+    """
+    
+    def __init__(self, model_config: Optional[Any] = None, wandb_run: Optional[Any] = None) -> None:
+        """
+        Initialize the DialogTrainer with model configuration and optional WandB tracking.
+        
+        Args:
+            model_config: Configuration object containing model parameters. If None,
+                         uses the default configuration from settings.
+            wandb_run: Optional WandB run instance for experiment tracking.
+        """
         try:
             from ..config.settings import DEFAULT_MODEL_CONFIG
         except ImportError:
@@ -83,8 +141,13 @@ class DialogTrainer:
         
         os.makedirs(self.config.output_dir, exist_ok=True)
     
-    def _init_pretrained_model(self):
-        """Initialize pre-trained model for fine-tuning."""
+    def _init_pretrained_model(self) -> None:
+        """
+        Initialize pre-trained model for fine-tuning.
+        
+        Loads a pre-trained model and tokenizer from HuggingFace model hub,
+        sets up padding tokens, and moves the model to the appropriate device.
+        """
         print(f"Loading model: {self.config.name}")
         print(f"Output: {self.config.output_dir}")
         
@@ -95,8 +158,13 @@ class DialogTrainer:
         self.model = AutoModelForCausalLM.from_pretrained(self.config.name)
         self.model.to(self.device)
     
-    def _init_custom_model(self):
-        """Initialize custom model from scratch."""
+    def _init_custom_model(self) -> None:
+        """
+        Initialize custom model from scratch.
+        
+        Creates a custom GPT-style model using the architecture parameters
+        specified in the configuration. Uses GPT-2 tokenizer for compatibility.
+        """
         print(f"Building model: {self.config.name}")
         print(f"Architecture: {self.config.n_layer} layers, {self.config.n_embd} dim, {self.config.n_head} heads")
         print(f"Output: {self.config.output_dir}")
@@ -112,8 +180,23 @@ class DialogTrainer:
         self.model = create_custom_model(self.config)
         self.model.to(self.device)
     
-    def prepare_dataset(self, data, train_split=0.9, max_samples=None):
-        """Prepare dataset for training."""
+    def prepare_dataset(self, data: Union[Any, list], train_split: float = 0.9, 
+                       max_samples: Optional[int] = None) -> Tuple[HFDataset, HFDataset]:
+        """
+        Prepare dataset for training by tokenizing and splitting into train/eval sets.
+        
+        Args:
+            data: Input data as either a pandas DataFrame with 'text' column or 
+                 a list of strings.
+            train_split: Fraction of data to use for training (remainder for evaluation).
+            max_samples: Maximum number of samples to use. If None, uses all data.
+        
+        Returns:
+            Tuple of (train_dataset, eval_dataset) as HuggingFace Dataset objects.
+        
+        Raises:
+            ValueError: If data format is not supported.
+        """
         if hasattr(data, 'iloc'):
             texts = data['text'].tolist()
         elif isinstance(data, list):
@@ -134,7 +217,8 @@ class DialogTrainer:
         train_dataset = HFDataset.from_dict({"text": train_texts})
         eval_dataset = HFDataset.from_dict({"text": eval_texts})
         
-        def tokenize_function(examples):
+        def tokenize_function(examples: dict) -> dict:
+            """Tokenize text examples for model input."""
             return self.tokenizer(
                 examples["text"], 
                 truncation=True, 
@@ -147,10 +231,26 @@ class DialogTrainer:
         
         return train_dataset, eval_dataset
     
-    def train(self, train_dataset, eval_dataset, 
-              num_epochs=3, batch_size=4, learning_rate=5e-5,
-              save_steps=500, eval_steps=500, resume_from_checkpoint=None):
-        """Train the model."""
+    def train(self, train_dataset: HFDataset, eval_dataset: HFDataset, 
+              num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,
+              save_steps: int = 500, eval_steps: int = 500, 
+              resume_from_checkpoint: Optional[str] = None) -> Trainer:
+        """
+        Train the model using the provided datasets.
+        
+        Args:
+            train_dataset: Tokenized training dataset.
+            eval_dataset: Tokenized evaluation dataset.
+            num_epochs: Number of training epochs.
+            batch_size: Batch size for training and evaluation.
+            learning_rate: Learning rate for optimization.
+            save_steps: Frequency of model checkpointing.
+            eval_steps: Frequency of evaluation during training.
+            resume_from_checkpoint: Path to checkpoint to resume training from.
+        
+        Returns:
+            Trained Trainer object.
+        """
         if self.wandb_run:
             training_params = {
                 "num_epochs": num_epochs,
@@ -215,8 +315,22 @@ class DialogTrainer:
         
         return trainer
     
-    def generate_response(self, instruction, max_length=150, log_to_wandb=False):
-        """Generate response for given instruction."""
+    def generate_response(self, instruction: str, max_length: int = 150, 
+                         log_to_wandb: bool = False) -> str:
+        """
+        Generate response for given instruction using the trained model.
+        
+        This method formats the instruction using Alpaca-style prompting,
+        generates a response using the model, and optionally logs metrics to WandB.
+        
+        Args:
+            instruction: Input instruction or question for the model.
+            max_length: Maximum length of the generated response.
+            log_to_wandb: Whether to log generation metrics to WandB.
+        
+        Returns:
+            Generated response text, cleaned of special tokens and formatting.
+        """
         input_text = (
             f"Below is an instruction that describes a task. "
             f"Write a response that appropriately completes the request.\n\n"
@@ -235,10 +349,10 @@ class DialogTrainer:
                     top_k=50
                 )
             else:
+                # For pre-trained models, use transformers generate method
                 outputs = self.model.generate(
                     inputs,
                     max_length=len(inputs[0]) + max_length,
-                    num_return_sequences=1,
                     temperature=0.7,
                     do_sample=True,
                     pad_token_id=self.tokenizer.eos_token_id

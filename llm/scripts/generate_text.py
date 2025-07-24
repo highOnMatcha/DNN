@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
 Text generation utility script.
+
+This script provides a command-line interface for generating text using trained
+dialog models. It supports loading models from different configurations and
+allows customization of generation parameters like maximum length and input
+instructions.
 """
 
 import argparse
 import sys
 import os
+from typing import NoReturn
 
 # Add the parent directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,7 +20,14 @@ from src.core.trainer import DialogTrainer
 from src.config.settings import get_model_config
 
 
-def main():
+def main() -> NoReturn:
+    """
+    Main entry point for text generation utility.
+    
+    Parses command-line arguments and generates text using the specified
+    model and instruction. Supports both pre-configured models and
+    custom model paths.
+    """
     parser = argparse.ArgumentParser(description="Generate text using trained model")
     parser.add_argument("--model", type=str, default="gpt2-small",
                        help="Model type to use")
@@ -30,7 +43,9 @@ def main():
     if args.model_path:
         # Load from specific path
         print(f"Loading model from: {args.model_path}")
-        # TODO: Implement loading from checkpoint
+        # Future implementation: Add checkpoint loading functionality
+        print("Loading from checkpoint path not yet implemented")
+        sys.exit(1)
     else:
         # Use configured model
         model_config = get_model_config(args.model)
@@ -42,6 +57,8 @@ def main():
     print("=" * 50)
     response = trainer.generate_response(args.instruction, max_length=args.max_length)
     print(f"Response: {response}")
+    
+    sys.exit(0)
 
 
 if __name__ == "__main__":

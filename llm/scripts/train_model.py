@@ -1,11 +1,16 @@
 """
 Training script for Alpaca-GPT4 dataset using PyTorch and Transformers.
-Handles dataset loading, preprocessing, and fine-tuning of language models.
+
+This script provides a comprehensive training interface for dialog models with
+support for different training modes including quick testing, development, and
+production training. It handles dataset loading, preprocessing, fine-tuning,
+and model evaluation with detailed progress reporting.
 """
 
 import argparse
 import os
 import sys
+from typing import NoReturn
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -17,8 +22,16 @@ from src.config.settings import (
 )
 
 
-def main(model_type="gpt2-small"):
-    """Main training pipeline."""
+def main(model_type: str = "gpt2-small") -> None:
+    """
+    Main training pipeline for standard model training.
+    
+    Executes the complete training workflow including dataset loading,
+    model initialization, training, and basic generation testing.
+    
+    Args:
+        model_type: Identifier for the model configuration to use.
+    """
     print("Alpaca-GPT4 PyTorch Training Pipeline")
     print("=" * 40)
     
@@ -72,8 +85,14 @@ def main(model_type="gpt2-small"):
     print("\nTraining completed successfully!")
 
 
-def analyze_dataset():
-    """Analyze the dataset without training."""
+def analyze_dataset() -> None:
+    """
+    Analyze the dataset without training.
+    
+    Performs comprehensive dataset analysis including size information,
+    summary statistics, and sample data examination. Useful for
+    understanding the dataset before training.
+    """
     print("Dataset Analysis Mode")
     print("=" * 20)
     
@@ -102,8 +121,17 @@ def analyze_dataset():
     print(f"'{df['text'].iloc[0][:300]}...'")
 
 
-def train_production(model_type="gpt2-medium"):
-    """Run training with production configuration."""
+def train_production(model_type: str = "gpt2-medium") -> None:
+    """
+    Run training with production configuration.
+    
+    Executes training using production-grade parameters including
+    larger datasets, more epochs, and optimized hyperparameters
+    for high-quality model training.
+    
+    Args:
+        model_type: Identifier for the model configuration to use.
+    """
     print("Production Training Mode")
     print("=" * 25)
     
