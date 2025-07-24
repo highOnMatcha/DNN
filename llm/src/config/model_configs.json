@@ -107,21 +107,21 @@
     "test": {
       "num_epochs": 1,
       "batch_size": 2,
-      "learning_rate": 5e-05,
+      "learning_rate": 5e-04,
       "max_samples": 100,
       "description": "Quick testing configuration"
     },
     "development": {
       "num_epochs": 2,
       "batch_size": 4,
-      "learning_rate": 3e-05,
+      "learning_rate": 3e-04,
       "max_samples": 1000,
       "description": "Development training configuration"
     },
     "production": {
       "num_epochs": 3,
       "batch_size": 8,
-      "learning_rate": 2e-05,
+      "learning_rate": 1e-04,
       "max_samples": null,
       "description": "Full production training"
     }
