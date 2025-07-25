@@ -19,7 +19,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.training_args import TrainingArguments
 from transformers.trainer import Trainer
 from transformers.data.data_collator import DataCollatorForLanguageModeling
-from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_callback import TrainerCallback, EarlyStoppingCallback
 
 # Add imports for streaming support
 current_dir = Path(__file__).parent.parent
@@ -304,10 +304,32 @@ class DialogTrainer:
         Returns:
             Trained Trainer object.
         """
+        # Get training config for enhanced settings
+        from config.settings import get_test_config, get_development_config, get_production_config
+        
+        # Determine config type from epochs (simple heuristic)
+        if num_epochs == 1:
+            config = get_test_config()
+        elif num_epochs == 2:
+            config = get_development_config()
+        else:
+            config = get_production_config()
+        
+        # Override with current parameters
+        config.num_epochs = num_epochs
+        config.batch_size = batch_size
+        config.learning_rate = learning_rate
+        config.save_steps = save_steps
+        config.eval_steps = eval_steps
+        
         if streaming_config is None:
-            streaming_config = StreamingConfig(batch_size=batch_size)
+            streaming_config = StreamingConfig(
+                batch_size=batch_size,
+                cache_memory_percent=config.cache_memory_percent
+            )
         else:
             streaming_config.batch_size = batch_size
+            streaming_config.cache_memory_percent = config.cache_memory_percent
             
         print("=" * 50)
         print("STREAMING TRAINING MODE")
@@ -315,6 +337,8 @@ class DialogTrainer:
         print(f"Source: {source}")
         print(f"Streaming batch size: {streaming_config.batch_size}")
         print(f"Training batch size: {batch_size}")
+        print(f"Prefetch buffer: {config.cache_memory_percent:.1%} of RAM")
+        print(f"Strategy: Monte Carlo sampling for optimal memory usage")
         print()
         
         # Create streaming manager
@@ -343,29 +367,71 @@ class DialogTrainer:
             self.wandb_run.config.update(training_params)
         
         # Create streaming dataloaders
-        train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
-            source, self.tokenizer
-        )
+        try:
+            train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
+                source, self.tokenizer
+            )
+            print(f"Successfully created streaming dataloaders from {source}")
+        except Exception as e:
+            print(f"Warning: Failed to create streaming dataloaders: {e}")
+            print("Falling back to evaluation-disabled mode")
+            train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
+                source, self.tokenizer
+            ), None
+        
+        # Create minimal dummy datasets for the Trainer (required even with custom dataloaders)
+        dummy_train = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
+        dummy_eval = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
+        
+        # For streaming, we need to be more conservative with evaluation
+        # since we don't know the exact dataset size ahead of time
+        if config.patience is not None:
+            # Disable early stopping for streaming to avoid complications
+            config.patience = None
+            print("Early stopping disabled for streaming mode due to dataset size uncertainty")
+        
+        # Calculate warmup steps (estimate for streaming)
+        # Calculate steps based on actual sample limits
+        if streaming_config.max_samples is not None:
+            # Use actual sample count for accurate step calculation
+            estimated_steps_per_epoch = max(1, streaming_config.max_samples // batch_size)
+            print(f"Using sample-based step calculation: {streaming_config.max_samples} samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
+        else:
+            # Conservative estimate for unlimited streaming
+            estimated_steps_per_epoch = 1000
+            print(f"Using conservative estimate: {estimated_steps_per_epoch} steps per epoch for unlimited streaming")
+            
+        total_steps = estimated_steps_per_epoch * num_epochs
+        if config.warmup_ratio is not None:
+            warmup_steps = int(total_steps * config.warmup_ratio)
+        else:
+            warmup_steps = config.warmup_steps
+        
+        # For streaming, we must set max_steps since dataloaders don't have length
+        max_steps = total_steps
         
         # Create training arguments optimized for streaming
         training_args = TrainingArguments(
             output_dir=self.config.output_dir,
             overwrite_output_dir=True,
-            num_train_epochs=num_epochs,
+            max_steps=max_steps,  # Required for streaming dataloaders
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            warmup_steps=100,
+            warmup_steps=warmup_steps,
+            lr_scheduler_type=config.lr_scheduler_type,
             logging_steps=10,
             save_steps=save_steps,
             eval_steps=eval_steps,
-            eval_strategy="steps",
+            eval_strategy="steps" if eval_dataloader is not None else "no",
             save_strategy="steps",
             load_best_model_at_end=False,  # Disable for streaming to avoid memory issues
             learning_rate=learning_rate,
-            weight_decay=0.01,
+            weight_decay=config.weight_decay,
             logging_dir=f"{self.config.output_dir}/logs",
             report_to=["wandb"] if self.wandb_run else [],
             run_name=self.wandb_run.name if self.wandb_run else None,
+            metric_for_best_model=config.metric_for_best_model,
+            greater_is_better=False if "loss" in config.metric_for_best_model else True,
             dataloader_pin_memory=False,  # Disable for streaming
             remove_unused_columns=False,  # Keep all columns for streaming
         )
@@ -375,21 +441,29 @@ class DialogTrainer:
             mlm=False,
         )
         
+        # Setup callbacks for streaming
+        callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
+        
         # Create trainer with streaming dataloaders
         trainer = Trainer(
             model=self.model,
             args=training_args,
-            train_dataset=None,  # We'll provide dataloaders directly
-            eval_dataset=None,
+            train_dataset=dummy_train,  # Provide dummy dataset to satisfy Trainer requirements
+            eval_dataset=dummy_eval if eval_dataloader is not None else None,
             data_collator=data_collator,
-            callbacks=[WandBCallback(self.wandb_run)] if self.wandb_run else [],
+            callbacks=callbacks,
         )
         
         # Override dataloaders with streaming versions
-        trainer.get_train_dataloader = lambda: train_dataloader
-        trainer.get_eval_dataloader = lambda: eval_dataloader
+        trainer.get_train_dataloader = lambda *args, **kwargs: train_dataloader
+        if eval_dataloader is not None:
+            trainer.get_eval_dataloader = lambda *args, **kwargs: eval_dataloader
         
         print("Starting streaming training...")
+        print(f"Learning rate scheduler: {config.lr_scheduler_type}")
+        print(f"Warmup steps: {warmup_steps}")
+        print(f"Max training steps: {max_steps}")
+        print(f"Evaluation: {'Enabled' if eval_dataloader is not None else 'Disabled'}")
         start_time = time.time()
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         training_duration = time.time() - start_time
@@ -440,13 +514,39 @@ class DialogTrainer:
             }
             self.wandb_run.config.update(training_params)
         
+        # Get training config for enhanced settings
+        from config.settings import get_test_config, get_development_config, get_production_config
+        
+        # Determine config type from epochs (simple heuristic)
+        if num_epochs == 1:
+            config = get_test_config()
+        elif num_epochs == 2:
+            config = get_development_config()
+        else:
+            config = get_production_config()
+        
+        # Override with current parameters
+        config.num_epochs = num_epochs
+        config.batch_size = batch_size
+        config.learning_rate = learning_rate
+        config.save_steps = save_steps
+        config.eval_steps = eval_steps
+        
+        # Calculate warmup steps
+        total_steps = (len(train_dataset) // batch_size) * num_epochs
+        if config.warmup_ratio is not None:
+            warmup_steps = int(total_steps * config.warmup_ratio)
+        else:
+            warmup_steps = config.warmup_steps
+        
         training_args = TrainingArguments(
             output_dir=self.config.output_dir,
             overwrite_output_dir=True,
             num_train_epochs=num_epochs,
             per_device_train_batch_size=batch_size,
             per_device_eval_batch_size=batch_size,
-            warmup_steps=100,
+            warmup_steps=warmup_steps,
+            lr_scheduler_type=config.lr_scheduler_type,
             logging_steps=10,
             save_steps=save_steps,
             eval_steps=eval_steps,
@@ -454,10 +554,12 @@ class DialogTrainer:
             save_strategy="steps",
             load_best_model_at_end=True,
             learning_rate=learning_rate,
-            weight_decay=0.01,
+            weight_decay=config.weight_decay,
             logging_dir=f"{self.config.output_dir}/logs",
             report_to=["wandb"] if self.wandb_run else [],
             run_name=self.wandb_run.name if self.wandb_run else None,
+            metric_for_best_model=config.metric_for_best_model,
+            greater_is_better=False if "loss" in config.metric_for_best_model else True,
         )
         
         data_collator = DataCollatorForLanguageModeling(
@@ -465,16 +567,31 @@ class DialogTrainer:
             mlm=False,
         )
         
+        # Setup callbacks
+        callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
+        
+        # Add early stopping if patience is configured
+        if config.patience is not None:
+            early_stopping = EarlyStoppingCallback(
+                early_stopping_patience=config.patience,
+                early_stopping_threshold=config.early_stopping_threshold
+            )
+            callbacks.append(early_stopping)
+            print(f"Early stopping enabled: patience={config.patience}, threshold={config.early_stopping_threshold}")
+        
         trainer = Trainer(
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             data_collator=data_collator,
-            callbacks=[WandBCallback(self.wandb_run)] if self.wandb_run else [],
+            callbacks=callbacks,
         )
         
         print("Starting training...")
+        print(f"Learning rate scheduler: {config.lr_scheduler_type}")
+        print(f"Warmup steps: {warmup_steps} ({warmup_steps/total_steps:.1%} of training)")
+        print(f"Total training steps: {total_steps}")
         start_time = time.time()
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         training_duration = time.time() - start_time

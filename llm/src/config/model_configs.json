@@ -105,25 +105,43 @@
   },
   "training_configs": {
     "test": {
-      "num_epochs": 1,
-      "batch_size": 2,
+      "num_epochs": 2,
+      "batch_size": 4,
       "learning_rate": 5e-04,
-      "max_samples": 100,
-      "description": "Quick testing configuration"
+      "max_samples": 50,
+      "warmup_steps": 20,
+      "lr_scheduler_type": "constant_with_warmup",
+      "patience": null,
+      "early_stopping_threshold": 0.0,
+      "weight_decay": 0.01,
+      "cache_memory_percent": 0.1,
+      "description": "Quick testing configuration - simple scheduler, no early stopping, 30% RAM allocation with reasonable batch size"
     },
     "development": {
       "num_epochs": 2,
       "batch_size": 4,
       "learning_rate": 3e-04,
       "max_samples": 1000,
-      "description": "Development training configuration"
+      "warmup_ratio": 0.05,
+      "lr_scheduler_type": "cosine",
+      "patience": 3,
+      "early_stopping_threshold": 0.005,
+      "weight_decay": 0.01,
+      "cache_memory_percent": 0.1,
+      "description": "Development training configuration - cosine scheduler with moderate patience, 10% RAM cache"
     },
     "production": {
       "num_epochs": 3,
       "batch_size": 8,
       "learning_rate": 1e-04,
       "max_samples": null,
-      "description": "Full production training"
+      "warmup_ratio": 0.1,
+      "lr_scheduler_type": "cosine",
+      "patience": 5,
+      "early_stopping_threshold": 0.001,
+      "weight_decay": 0.01,
+      "cache_memory_percent": 0.15,
+      "description": "Full production training - cosine scheduler with conservative patience, 15% RAM cache"
     }
   }
 }

@@ -110,23 +110,35 @@ class TrainingConfig:
         batch_size: Batch size for training and evaluation.
         learning_rate: Learning rate for the optimizer.
         warmup_steps: Number of warmup steps for learning rate scheduling.
+        warmup_ratio: Alternative to warmup_steps - fraction of training for warmup.
+        lr_scheduler_type: Type of learning rate scheduler to use.
         logging_steps: Frequency of logging training metrics.
         save_steps: Frequency of saving model checkpoints.
         eval_steps: Frequency of running evaluation.
         weight_decay: Weight decay coefficient for regularization.
         max_samples: Maximum number of samples to use (None for all data).
         train_split: Fraction of data to use for training vs evaluation.
+        patience: Number of evaluation steps to wait for improvement before stopping.
+        early_stopping_threshold: Minimum improvement threshold for early stopping.
+        metric_for_best_model: Metric to use for early stopping and best model selection.
     """
     num_epochs: int = 1
     batch_size: int = 2
     learning_rate: float = 5e-5
     warmup_steps: int = 100
+    warmup_ratio: Optional[float] = None  # If set, overrides warmup_steps
+    lr_scheduler_type: str = "cosine"  # linear, cosine, cosine_with_restarts, polynomial, constant, constant_with_warmup
     logging_steps: int = 50
     save_steps: int = 500
     eval_steps: int = 500
     weight_decay: float = 0.01
     max_samples: Optional[int] = 1000  # For testing, use None for full dataset
     train_split: float = 0.9
+    patience: Optional[int] = None  # Number of eval steps to wait for improvement
+    early_stopping_threshold: float = 0.0  # Minimum improvement needed
+    metric_for_best_model: str = "eval_loss"  # Metric to track for early stopping
+    # Streaming cache configuration
+    cache_memory_percent: float = 0.1  # Percentage of RAM to use for database caching
 
 
 @dataclass
@@ -168,9 +180,17 @@ def get_production_config() -> TrainingConfig:
         num_epochs=prod_config.get("num_epochs", 3),
         batch_size=prod_config.get("batch_size", 8),
         learning_rate=prod_config.get("learning_rate", 2e-5),
+        warmup_steps=prod_config.get("warmup_steps", 100),
+        warmup_ratio=prod_config.get("warmup_ratio", None),
+        lr_scheduler_type=prod_config.get("lr_scheduler_type", "cosine"),
         max_samples=prod_config.get("max_samples", None),
         save_steps=1000,
-        eval_steps=1000
+        eval_steps=1000,
+        patience=prod_config.get("patience", 5),
+        early_stopping_threshold=prod_config.get("early_stopping_threshold", 0.001),
+        weight_decay=prod_config.get("weight_decay", 0.01),
+        metric_for_best_model="eval_loss",
+        cache_memory_percent=prod_config.get("cache_memory_percent", 0.15)
     )
 
 
@@ -189,9 +209,17 @@ def get_test_config() -> TrainingConfig:
         num_epochs=test_config.get("num_epochs", 1),
         batch_size=test_config.get("batch_size", 2),
         learning_rate=test_config.get("learning_rate", 5e-5),
+        warmup_steps=test_config.get("warmup_steps", 20),
+        warmup_ratio=test_config.get("warmup_ratio", None),
+        lr_scheduler_type=test_config.get("lr_scheduler_type", "constant_with_warmup"),
         max_samples=test_config.get("max_samples", 100),
         save_steps=50,
-        eval_steps=50
+        eval_steps=50,
+        patience=test_config.get("patience", None),
+        early_stopping_threshold=test_config.get("early_stopping_threshold", 0.0),
+        weight_decay=test_config.get("weight_decay", 0.01),
+        metric_for_best_model="eval_loss",
+        cache_memory_percent=test_config.get("cache_memory_percent", 0.05)
     )
 
 
@@ -210,9 +238,17 @@ def get_development_config() -> TrainingConfig:
         num_epochs=dev_config.get("num_epochs", 2),
         batch_size=dev_config.get("batch_size", 4),
         learning_rate=dev_config.get("learning_rate", 3e-5),
+        warmup_steps=dev_config.get("warmup_steps", 100),
+        warmup_ratio=dev_config.get("warmup_ratio", None),
+        lr_scheduler_type=dev_config.get("lr_scheduler_type", "cosine"),
         max_samples=dev_config.get("max_samples", 1000),
         save_steps=200,
-        eval_steps=200
+        eval_steps=200,
+        patience=dev_config.get("patience", 3),
+        early_stopping_threshold=dev_config.get("early_stopping_threshold", 0.005),
+        weight_decay=dev_config.get("weight_decay", 0.01),
+        metric_for_best_model="eval_loss",
+        cache_memory_percent=dev_config.get("cache_memory_percent", 0.1)
     )
 
 

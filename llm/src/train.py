@@ -90,6 +90,23 @@ def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "
         return None
 
 
+def apply_config_overrides(training_config, args):
+    """Apply command-line argument overrides to training configuration."""
+    if args.lr_scheduler:
+        training_config.lr_scheduler_type = args.lr_scheduler
+        print(f"Overriding LR scheduler to: {args.lr_scheduler}")
+    
+    if args.patience is not None:
+        training_config.patience = args.patience
+        print(f"Overriding patience to: {args.patience}")
+    
+    if args.no_early_stopping:
+        training_config.patience = None
+        print("Early stopping disabled via command line")
+    
+    return training_config
+
+
 def load_and_validate_configs(model_name: str, config_type: str, max_samples: Optional[int] = None):
     """Load and validate model and training configurations."""
     print("1. Loading configurations...")
@@ -112,6 +129,17 @@ def load_and_validate_configs(model_name: str, config_type: str, max_samples: Op
     print(f"  - Epochs: {training_config.num_epochs}")
     print(f"  - Batch size: {training_config.batch_size}")
     print(f"  - Learning rate: {training_config.learning_rate}")
+    print(f"  - LR scheduler: {training_config.lr_scheduler_type}")
+    if training_config.warmup_ratio:
+        print(f"  - Warmup ratio: {training_config.warmup_ratio:.1%}")
+    else:
+        print(f"  - Warmup steps: {training_config.warmup_steps}")
+    print(f"  - Weight decay: {training_config.weight_decay}")
+    if training_config.patience:
+        print(f"  - Early stopping patience: {training_config.patience}")
+        print(f"  - Early stopping threshold: {training_config.early_stopping_threshold}")
+    else:
+        print("  - Early stopping: Disabled")
     print(f"  - Max samples: {training_config.max_samples or 'All'}")
     print()
     
@@ -183,7 +211,8 @@ def prepare_streaming_datasets(trainer, training_config):
     streaming_config = StreamingConfig(
         batch_size=min(1000, training_config.max_samples or 1000),
         max_length=512,
-        train_split=0.9
+        train_split=0.9,
+        max_samples=training_config.max_samples  # Pass the max_samples limit
     )
     
     train_dataset, eval_dataset = trainer.prepare_streaming_datasets(
