@@ -8,7 +8,7 @@ the HuggingFace transformers library.
 """
 
 import math
-from typing import Optional, Tuple, Any
+from typing import Optional, Any
 
 import torch
 import torch.nn as nn
