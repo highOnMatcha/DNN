@@ -101,6 +101,181 @@ def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "
         return None
 
 
+def load_and_validate_configs(model_name: str, config_type: str, max_samples: Optional[int] = None):
+    """Load and validate model and training configurations."""
+    print("1. Loading configurations...")
+    model_config = get_model_config(model_name)
+    
+    if config_type == "test":
+        training_config = get_test_config()
+    elif config_type == "development":
+        training_config = get_development_config()
+    elif config_type == "production":
+        training_config = get_production_config()
+    else:
+        raise ValueError(f"Unknown config type: {config_type}")
+    
+    if max_samples is not None:
+        training_config.max_samples = max_samples
+    
+    print(f"Model config: {model_config.name}")
+    print(f"Training config: {config_type}")
+    print(f"  - Epochs: {training_config.num_epochs}")
+    print(f"  - Batch size: {training_config.batch_size}")
+    print(f"  - Learning rate: {training_config.learning_rate}")
+    print(f"  - Max samples: {training_config.max_samples or 'All'}")
+    print()
+    
+    return model_config, training_config
+
+
+def load_and_prepare_dataset(training_config):
+    """Load dataset and prepare train/eval splits."""
+    print("2. Loading dataset...")
+    dataset_manager = get_dataset_manager()
+    df = dataset_manager.load_dataset()
+    
+    print(f"Dataset loaded: {len(df)} total samples")
+    dataset_manager.print_dataset_summary(df)
+    print()
+    
+    return df
+
+
+def initialize_trainer(model_config, wandb_run):
+    """Initialize trainer with model configuration."""
+    print("3. Initializing trainer...")
+    trainer = DialogTrainer(
+        model_config=model_config,
+        wandb_run=wandb_run
+    )
+    print("Trainer initialized")
+    print()
+    
+    return trainer
+
+
+def prepare_training_datasets(trainer, df, training_config):
+    """Prepare training and evaluation datasets."""
+    print("4. Preparing training data...")
+    train_dataset, eval_dataset = trainer.prepare_dataset(
+        df,
+        train_split=0.9,
+        max_samples=training_config.max_samples
+    )
+    print("Dataset prepared")
+    print()
+    
+    return train_dataset, eval_dataset
+
+
+def execute_training(trainer, train_dataset, eval_dataset, training_config, resume_from_checkpoint):
+    """Execute the training process."""
+    print("5. Starting training...")
+    print("-" * 40)
+    start_time = time.time()
+    
+    trainer_obj = trainer.train(
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        num_epochs=training_config.num_epochs,
+        batch_size=training_config.batch_size,
+        learning_rate=training_config.learning_rate,
+        save_steps=training_config.save_steps,
+        eval_steps=training_config.eval_steps,
+        resume_from_checkpoint=resume_from_checkpoint
+    )
+    
+    training_duration = time.time() - start_time
+    print("-" * 40)
+    print(f"Training completed in {training_duration/60:.1f} minutes")
+    print()
+    
+    return trainer_obj, training_duration
+
+
+def test_generation(trainer, wandb_run):
+    """Test model generation capabilities and log metrics."""
+    print("6. Testing generation capabilities...")
+    test_instructions = [
+        "Explain what machine learning is in simple terms.",
+        "How do I make a good cup of coffee?",
+        "What are the benefits of exercise?",
+        "Tell me about the solar system.",
+        "What is the capital of France?",
+        "How does photosynthesis work?",
+        "What is the meaning of life?",
+        "Describe the process of DNA replication.",
+        "What are the main components of a computer?"
+    ]
+    
+    if wandb_run:
+        generation_table = wandb.Table(columns=[
+            "Instruction", "Response", "Response_Length", 
+            "Word_Count", "Generation_Time_Seconds"
+        ])
+    
+    generation_metrics = {
+        "total_time": 0.0,
+        "total_responses": 0.0,
+        "total_length": 0.0,
+        "total_words": 0.0
+    }
+    
+    for i, instruction in enumerate(test_instructions, 1):
+        print(f"\n[{i}/{len(test_instructions)}] Testing: {instruction[:50]}...")
+        
+        try:
+            start_time = time.time()
+            response = trainer.generate_response(
+                instruction, 
+                max_length=100, 
+                log_to_wandb=bool(wandb_run)
+            )
+            generation_time = time.time() - start_time
+            
+            print(f"Response: {response[:100]}{'...' if len(response) > 100 else ''}")
+            
+            generation_metrics["total_time"] += generation_time
+            generation_metrics["total_responses"] += 1
+            generation_metrics["total_length"] += len(response)
+            generation_metrics["total_words"] += len(response.split())
+            
+            if wandb_run:
+                generation_table.add_data(
+                    instruction[:100] + "..." if len(instruction) > 100 else instruction,
+                    response[:200] + "..." if len(response) > 200 else response,
+                    len(response),
+                    len(response.split()),
+                    round(generation_time, 3)
+                )
+            
+        except Exception as e:
+            print(f"Generation failed: {e}")
+            if wandb_run:
+                wandb_run.log({f"generation/error_{i}": str(e)})
+    
+    print(f"\nGeneration testing completed")
+    print(f"  - Average response time: {generation_metrics['total_time']/max(generation_metrics['total_responses'], 1):.3f}s")
+    print(f"  - Average response length: {generation_metrics['total_length']/max(generation_metrics['total_responses'], 1):.1f} chars")
+    print(f"  - Average word count: {generation_metrics['total_words']/max(generation_metrics['total_responses'], 1):.1f} words")
+    print()
+    
+    if wandb_run:
+        wandb_run.log({"generation_results": generation_table})
+        
+        if generation_metrics["total_responses"] > 0:
+            wandb_run.log({
+                "generation_summary/avg_time": generation_metrics["total_time"] / generation_metrics["total_responses"],
+                "generation_summary/avg_length": generation_metrics["total_length"] / generation_metrics["total_responses"],
+                "generation_summary/avg_words": generation_metrics["total_words"] / generation_metrics["total_responses"],
+                "generation_summary/total_responses": generation_metrics["total_responses"],
+                "generation_summary/success_rate": generation_metrics["total_responses"] / len(test_instructions)
+            })
+    
+    return generation_metrics
+
+
 def train_single_model(
     model_name: str = "custom-tiny",
     config_type: str = "test",
@@ -108,23 +283,7 @@ def train_single_model(
     project_name: str = "dialog-model-training",
     resume_from_checkpoint: Optional[str] = None
 ) -> Tuple[Any, Dict[str, float]]:
-    """
-    Train a single model with comprehensive logging and evaluation.
-    
-    This function orchestrates the complete training pipeline including dataset
-    loading, model initialization, training execution, and generation testing.
-    It provides detailed progress reporting and optional WandB integration.
-    
-    Args:
-        model_name: Identifier for the model configuration to use.
-        config_type: Training configuration type (test/development/production).
-        max_samples: Maximum number of training samples to use (None for all).
-        project_name: WandB project name for experiment tracking.
-        resume_from_checkpoint: Path to checkpoint directory for resuming training.
-    
-    Returns:
-        Tuple of (trained_trainer, generation_metrics_dict).
-    """
+    """Train a single model with comprehensive logging and evaluation."""
     print("=" * 60)
     print("SINGLE MODEL TRAINING PIPELINE")
     print("=" * 60)
@@ -143,151 +302,28 @@ def train_single_model(
     wandb_run = setup_wandb(project_name, model_name, config_type)
     
     try:
-        print("1. Loading configurations...")
-        model_config = get_model_config(model_name)
+        # Setup: Load configurations
+        model_config, training_config = load_and_validate_configs(model_name, config_type, max_samples)
         
-        if config_type == "test":
-            training_config = get_test_config()
-        elif config_type == "development":
-            training_config = get_development_config()
-        elif config_type == "production":
-            training_config = get_production_config()
-        else:
-            raise ValueError(f"Unknown config type: {config_type}")
+        # Setup: Load dataset
+        df = load_and_prepare_dataset(training_config)
         
-        if max_samples is not None:
-            training_config.max_samples = max_samples
+        # Setup: Initialize trainer
+        trainer = initialize_trainer(model_config, wandb_run)
         
-        print(f"Model config: {model_config.name}")
-        print(f"Training config: {config_type}")
-        print(f"  - Epochs: {training_config.num_epochs}")
-        print(f"  - Batch size: {training_config.batch_size}")
-        print(f"  - Learning rate: {training_config.learning_rate}")
-        print(f"  - Max samples: {training_config.max_samples or 'All'}")
-        print()
+        # Prepare: Create datasets
+        train_dataset, eval_dataset = prepare_training_datasets(trainer, df, training_config)
         
-        print("2. Loading dataset...")
-        dataset_manager = get_dataset_manager()
-        df = dataset_manager.load_dataset()
-        
-        print(f"Dataset loaded: {len(df)} total samples")
-        dataset_manager.print_dataset_summary(df)
-        print()
-        
-        print("3. Initializing trainer...")
-        trainer = DialogTrainer(
-            model_config=model_config,
-            wandb_run=wandb_run
-        )
-        print("Trainer initialized")
-        print()
-        
-        print("4. Preparing training data...")
-        train_dataset, eval_dataset = trainer.prepare_dataset(
-            df,
-            train_split=0.9,
-            max_samples=training_config.max_samples
-        )
-        print("Dataset prepared")
-        print()
-        
-        print("5. Starting training...")
-        print("-" * 40)
-        start_time = time.time()
-        
-        trainer_obj = trainer.train(
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            num_epochs=training_config.num_epochs,
-            batch_size=training_config.batch_size,
-            learning_rate=training_config.learning_rate,
-            save_steps=training_config.save_steps,
-            eval_steps=training_config.eval_steps,
-            resume_from_checkpoint=resume_from_checkpoint
+        # Train: Execute training
+        trainer_obj, training_duration = execute_training(
+            trainer, train_dataset, eval_dataset, training_config, resume_from_checkpoint
         )
         
-        training_duration = time.time() - start_time
-        print("-" * 40)
-        print(f"Training completed in {training_duration/60:.1f} minutes")
-        print()
+        # Test: Generation capabilities
+        generation_metrics = test_generation(trainer, wandb_run)
         
-        print("6. Testing generation capabilities...")
-        test_instructions = [
-            "Explain what machine learning is in simple terms.",
-            "How do I make a good cup of coffee?",
-            "What are the benefits of exercise?",
-            "Tell me about the solar system."
-        ]
-        
+        # Log completion
         if wandb_run:
-            generation_table = wandb.Table(columns=[
-                "Instruction", "Response", "Response_Length", 
-                "Word_Count", "Generation_Time_Seconds"
-            ])
-        
-        generation_metrics = {
-            "total_time": 0.0,
-            "total_responses": 0.0,
-            "total_length": 0.0,
-            "total_words": 0.0
-        }
-        
-        for i, instruction in enumerate(test_instructions, 1):
-            print(f"\n[{i}/{len(test_instructions)}] Testing: {instruction[:50]}...")
-            
-            try:
-                start_time = time.time()
-                response = trainer.generate_response(
-                    instruction, 
-                    max_length=100, 
-                    log_to_wandb=bool(wandb_run)
-                )
-                generation_time = time.time() - start_time
-                
-                print(f"Response: {response[:100]}{'...' if len(response) > 100 else ''}")
-                
-                # Update metrics
-                generation_metrics["total_time"] += generation_time
-                generation_metrics["total_responses"] += 1
-                generation_metrics["total_length"] += len(response)
-                generation_metrics["total_words"] += len(response.split())
-                
-                # Add to WandB table
-                if wandb_run:
-                    generation_table.add_data(
-                        instruction[:100] + "..." if len(instruction) > 100 else instruction,
-                        response[:200] + "..." if len(response) > 200 else response,
-                        len(response),
-                        len(response.split()),
-                        round(generation_time, 3)
-                    )
-                
-            except Exception as e:
-                print(f"Generation failed: {e}")
-                if wandb_run:
-                    wandb_run.log({f"generation/error_{i}": str(e)})
-        
-        print(f"\nGeneration testing completed")
-        print(f"  - Average response time: {generation_metrics['total_time']/max(generation_metrics['total_responses'], 1):.3f}s")
-        print(f"  - Average response length: {generation_metrics['total_length']/max(generation_metrics['total_responses'], 1):.1f} chars")
-        print(f"  - Average word count: {generation_metrics['total_words']/max(generation_metrics['total_responses'], 1):.1f} words")
-        print()
-        
-        # Log final results to WandB
-        if wandb_run:
-            wandb_run.log({"generation_results": generation_table})
-            
-            # Log summary metrics
-            if generation_metrics["total_responses"] > 0:
-                wandb_run.log({
-                    "generation_summary/avg_time": generation_metrics["total_time"] / generation_metrics["total_responses"],
-                    "generation_summary/avg_length": generation_metrics["total_length"] / generation_metrics["total_responses"],
-                    "generation_summary/avg_words": generation_metrics["total_words"] / generation_metrics["total_responses"],
-                    "generation_summary/total_responses": generation_metrics["total_responses"],
-                    "generation_summary/success_rate": generation_metrics["total_responses"] / len(test_instructions)
-                })
-            
-            # Log experiment completion
             wandb_run.log({
                 "experiment/status": "completed",
                 "experiment/total_duration_minutes": training_duration / 60,
@@ -317,7 +353,6 @@ def train_single_model(
         raise
         
     finally:
-        # Clean up WandB
         if wandb_run:
             wandb_run.finish()
             print("WandB run completed")
