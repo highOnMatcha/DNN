@@ -42,34 +42,72 @@ class DatasetManager:
         
         os.makedirs(self.data_dir, exist_ok=True)
     
-    def load_dataset(self, force_download: bool = False, save_to_disk: bool = True) -> pd.DataFrame:
+    def load_dataset(self, force_download: bool = False, save_to_disk: bool = False, 
+                    prefer_database: bool = True) -> pd.DataFrame:
         """
-        Load the Alpaca-GPT4 dataset from local file or download if not available.
+        Load the Alpaca-GPT4 dataset prioritizing database and remote sources.
         
-        This method attempts to load the dataset from a local CSV file first.
-        If the file doesn't exist or force_download is True, it downloads
-        the dataset from the remote Parquet file.
+        This method now prioritizes loading from database first, then remote sources,
+        and only falls back to local CSV files. This removes the dependency on
+        downloading and storing CSV files locally.
         
         Args:
-            force_download: Whether to force re-download even if local file exists.
-            save_to_disk: Whether to save the downloaded dataset to local storage.
+            force_download: Whether to force re-download even if local sources exist.
+            save_to_disk: Whether to save the downloaded dataset to local storage (deprecated).
+            prefer_database: Whether to prefer database over file sources.
         
         Returns:
             DataFrame containing the loaded dataset.
         """
+        # Priority 1: Try database if available and preferred
+        if prefer_database and not force_download:
+            try:
+                db_manager = DatabaseManager()
+                df = db_manager.load_from_database()
+                if df is not None and len(df) > 0:
+                    print(f"Loaded dataset from database: {len(df)} rows")
+                    return df
+                else:
+                    print("Database contains no data, trying other sources...")
+            except Exception as e:
+                print(f"Database unavailable ({e}), trying other sources...")
+        
+        # Priority 2: Try local CSV file if it exists
         if os.path.exists(self.dataset_file) and not force_download:
             print(f"Loading dataset from local file: {self.dataset_file}")
             df = pd.read_csv(self.dataset_file)
-        else:
-            print(f"Downloading dataset from {self.dataset_url}")
-            df = pd.read_parquet(self.dataset_url)
             
-            if save_to_disk:
-                df.to_csv(self.dataset_file, index=False)
-                print(f"Dataset saved to disk: {self.dataset_file}")
-                print(f"Dataset size: {os.path.getsize(self.dataset_file) / 1024**2:.1f} MB")
-            else:
-                print("Dataset loaded in memory only (not saved to disk)")
+            # Optionally save to database if loaded from file
+            if prefer_database:
+                try:
+                    db_manager = DatabaseManager()
+                    if db_manager.save_to_database(df):
+                        print("Dataset also saved to database for future streaming")
+                except Exception as e:
+                    print(f"Could not save to database: {e}")
+            
+            return df
+        
+        # Priority 3: Download from remote source
+        print(f"Downloading dataset from remote source: {self.dataset_url}")
+        df = pd.read_parquet(self.dataset_url)
+        
+        # Save to database first (for streaming), then optionally to disk
+        if prefer_database:
+            try:
+                db_manager = DatabaseManager()
+                if db_manager.save_to_database(df):
+                    print("Dataset saved to database for streaming support")
+            except Exception as e:
+                print(f"Could not save to database: {e}")
+        
+        # Save to disk only if explicitly requested (deprecated)
+        if save_to_disk:
+            df.to_csv(self.dataset_file, index=False)
+            print(f"Dataset also saved to disk: {self.dataset_file}")
+            print("Note: CSV storage is deprecated, use database for streaming")
+        else:
+            print("Dataset loaded in memory only (recommended for streaming workflows)")
         
         return df
     

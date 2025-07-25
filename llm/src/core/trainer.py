@@ -3,12 +3,15 @@ Dialog model trainer with PyTorch and Transformers integration.
 
 This module provides a comprehensive training framework for dialog datasets, supporting
 both pre-trained model fine-tuning and custom model training from scratch. It includes
-WandB integration for experiment tracking and monitoring.
+WandB integration for experiment tracking and monitoring, with support for streaming
+large datasets that don't fit in memory.
 """
 
 import os
 import time
 from typing import Optional, Tuple, Any, Union
+from pathlib import Path
+import sys
 
 import torch
 from datasets import Dataset as HFDataset
@@ -17,6 +20,11 @@ from transformers.training_args import TrainingArguments
 from transformers.trainer import Trainer
 from transformers.data.data_collator import DataCollatorForLanguageModeling
 from transformers.trainer_callback import TrainerCallback
+
+# Add imports for streaming support
+current_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(current_dir))
+from data.streaming import StreamingDataManager, StreamingConfig, get_streaming_manager
 
 
 class WandBCallback(TrainerCallback):
@@ -230,6 +238,177 @@ class DialogTrainer:
         eval_dataset = eval_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
         
         return train_dataset, eval_dataset
+    
+    def prepare_streaming_datasets(self, source: str = "database", 
+                                 streaming_config: Optional[StreamingConfig] = None) -> Tuple[Any, Any]:
+        """
+        Prepare streaming datasets for training with large data that doesn't fit in memory.
+        
+        This method creates streaming datasets that load data in batches from either
+        a database or remote source, avoiding the need to load the entire dataset
+        into memory at once.
+        
+        Args:
+            source: Data source - 'database' or 'remote'. Default is 'database'.
+            streaming_config: Configuration for streaming behavior. If None, uses default.
+        
+        Returns:
+            Tuple of (train_streaming_dataset, eval_streaming_dataset).
+        """
+        if streaming_config is None:
+            streaming_config = StreamingConfig()
+            
+        print(f"Preparing streaming datasets from {source}...")
+        
+        # Create streaming manager
+        streaming_manager = get_streaming_manager(streaming_config)
+        
+        # Get dataset info
+        dataset_info = streaming_manager.get_dataset_info(source)
+        print(f"Dataset info: {dataset_info}")
+        
+        # Create streaming datasets
+        train_dataset, eval_dataset = streaming_manager.create_streaming_datasets(
+            source, self.tokenizer
+        )
+        
+        print(f"Streaming datasets created:")
+        print(f"  - Source: {source}")
+        print(f"  - Batch size: {streaming_config.batch_size}")
+        print(f"  - Train split: {streaming_config.train_split:.1%}")
+        print(f"  - Max length: {streaming_config.max_length}")
+        
+        return train_dataset, eval_dataset
+    
+    def train_streaming(self, source: str = "database", 
+                       streaming_config: Optional[StreamingConfig] = None,
+                       num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,
+                       save_steps: int = 500, eval_steps: int = 500, 
+                       resume_from_checkpoint: Optional[str] = None) -> Trainer:
+        """
+        Train the model using streaming datasets for large data that doesn't fit in memory.
+        
+        This method handles training with streaming datasets, automatically managing
+        data loading in batches from the specified source.
+        
+        Args:
+            source: Data source - 'database' or 'remote'.
+            streaming_config: Configuration for streaming behavior.
+            num_epochs: Number of training epochs.
+            batch_size: Batch size for training and evaluation.
+            learning_rate: Learning rate for optimization.
+            save_steps: Frequency of model checkpointing.
+            eval_steps: Frequency of evaluation during training.
+            resume_from_checkpoint: Path to checkpoint to resume training from.
+        
+        Returns:
+            Trained Trainer object.
+        """
+        if streaming_config is None:
+            streaming_config = StreamingConfig(batch_size=batch_size)
+        else:
+            streaming_config.batch_size = batch_size
+            
+        print("=" * 50)
+        print("STREAMING TRAINING MODE")
+        print("=" * 50)
+        print(f"Source: {source}")
+        print(f"Streaming batch size: {streaming_config.batch_size}")
+        print(f"Training batch size: {batch_size}")
+        print()
+        
+        # Create streaming manager
+        streaming_manager = get_streaming_manager(streaming_config)
+        
+        # Get dataset info for logging
+        dataset_info = streaming_manager.get_dataset_info(source)
+        
+        if self.wandb_run:
+            training_params = {
+                "num_epochs": num_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "streaming_enabled": True,
+                "streaming_source": source,
+                "streaming_batch_size": streaming_config.batch_size,
+                "streaming_train_split": streaming_config.train_split,
+                "max_length": streaming_config.max_length,
+            }
+            if 'total_rows' in dataset_info:
+                training_params.update({
+                    "total_dataset_size": dataset_info['total_rows'],
+                    "train_dataset_size": dataset_info.get('train_rows', 0),
+                    "eval_dataset_size": dataset_info.get('eval_rows', 0),
+                })
+            self.wandb_run.config.update(training_params)
+        
+        # Create streaming dataloaders
+        train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
+            source, self.tokenizer
+        )
+        
+        # Create training arguments optimized for streaming
+        training_args = TrainingArguments(
+            output_dir=self.config.output_dir,
+            overwrite_output_dir=True,
+            num_train_epochs=num_epochs,
+            per_device_train_batch_size=batch_size,
+            per_device_eval_batch_size=batch_size,
+            warmup_steps=100,
+            logging_steps=10,
+            save_steps=save_steps,
+            eval_steps=eval_steps,
+            eval_strategy="steps",
+            save_strategy="steps",
+            load_best_model_at_end=False,  # Disable for streaming to avoid memory issues
+            learning_rate=learning_rate,
+            weight_decay=0.01,
+            logging_dir=f"{self.config.output_dir}/logs",
+            report_to=["wandb"] if self.wandb_run else [],
+            run_name=self.wandb_run.name if self.wandb_run else None,
+            dataloader_pin_memory=False,  # Disable for streaming
+            remove_unused_columns=False,  # Keep all columns for streaming
+        )
+        
+        data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm=False,
+        )
+        
+        # Create trainer with streaming dataloaders
+        trainer = Trainer(
+            model=self.model,
+            args=training_args,
+            train_dataset=None,  # We'll provide dataloaders directly
+            eval_dataset=None,
+            data_collator=data_collator,
+            callbacks=[WandBCallback(self.wandb_run)] if self.wandb_run else [],
+        )
+        
+        # Override dataloaders with streaming versions
+        trainer.get_train_dataloader = lambda: train_dataloader
+        trainer.get_eval_dataloader = lambda: eval_dataloader
+        
+        print("Starting streaming training...")
+        start_time = time.time()
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        training_duration = time.time() - start_time
+        
+        if self.wandb_run:
+            final_metrics = {
+                "training/total_duration_minutes": training_duration / 60,
+                "training/completed": True,
+                "training/streaming_mode": True,
+            }
+            self.wandb_run.log(final_metrics)
+        
+        trainer.save_model()
+        self.tokenizer.save_pretrained(self.config.output_dir)
+        
+        print(f"Streaming training completed in {training_duration/60:.1f} minutes")
+        print(f"Model saved to: {self.config.output_dir}")
+        
+        return trainer
     
     def train(self, train_dataset: HFDataset, eval_dataset: HFDataset, 
               num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,

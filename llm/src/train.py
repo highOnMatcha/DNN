@@ -16,35 +16,24 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
+# Add the src directory to Python path
 current_dir = Path(__file__).parent
-parent_dir = current_dir.parent
 sys.path.insert(0, str(current_dir))
-sys.path.insert(0, str(parent_dir))
 
 import torch
 import wandb
 from dotenv import load_dotenv
 
-try:
-    from core.trainer import DialogTrainer
-    from config.settings import (
-        get_model_config, 
-        get_test_config, 
-        get_development_config, 
-        get_production_config,
-        list_available_models
-    )
-    from data.loaders import get_dataset_manager
-except ImportError:
-    from src.core.trainer import DialogTrainer
-    from src.config.settings import (
-        get_model_config, 
-        get_test_config, 
-        get_development_config, 
-        get_production_config,
-        list_available_models
-    )
-    from src.data.loaders import get_dataset_manager
+from core.trainer import DialogTrainer
+from config.settings import (
+    get_model_config, 
+    get_test_config, 
+    get_development_config, 
+    get_production_config,
+    list_available_models
+)
+from data.loaders import get_dataset_manager, get_database_manager
+from data.streaming import StreamingConfig, get_streaming_manager
 
 
 def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "unknown", 
@@ -130,16 +119,107 @@ def load_and_validate_configs(model_name: str, config_type: str, max_samples: Op
 
 
 def load_and_prepare_dataset(training_config):
-    """Load dataset and prepare train/eval splits."""
+    """Load dataset and prepare train/eval splits, prioritizing database sources."""
     print("2. Loading dataset...")
     dataset_manager = get_dataset_manager()
-    df = dataset_manager.load_dataset()
+    
+    # Use the new loading method that prioritizes database
+    df = dataset_manager.load_dataset(
+        force_download=False,
+        save_to_disk=False,  # Discourage CSV files
+        prefer_database=True  # Prioritize database for streaming support
+    )
     
     print(f"Dataset loaded: {len(df)} total samples")
     dataset_manager.print_dataset_summary(df)
     print()
     
     return df
+
+
+def check_database_availability() -> bool:
+    """Check if database is available and contains data."""
+    try:
+        db_manager = get_database_manager()
+        df = db_manager.load_from_database()
+        if df is not None and len(df) > 0:
+            print(f"Database available with {len(df)} rows")
+            return True
+        else:
+            print("Database is available but contains no data")
+            return False
+    except Exception as e:
+        print(f"Database not available: {e}")
+        return False
+
+
+def setup_streaming_source(prefer_database: bool = True) -> str:
+    """
+    Determine the best streaming source based on availability.
+    
+    Args:
+        prefer_database: Whether to prefer database over remote sources
+        
+    Returns:
+        Source string: 'database' or 'remote'
+    """
+    if prefer_database and check_database_availability():
+        return "database"
+    else:
+        print("Falling back to remote source (not yet implemented)")
+        # For now, we'll still try database even if check failed
+        # In production, you'd implement remote streaming here
+        return "database"
+
+
+def prepare_streaming_datasets(trainer, training_config):
+    """Prepare streaming datasets for large data training."""
+    print("4. Preparing streaming datasets...")
+    
+    # Determine best streaming source
+    source = setup_streaming_source(prefer_database=True)
+    
+    # Create streaming config based on training config
+    streaming_config = StreamingConfig(
+        batch_size=min(1000, training_config.max_samples or 1000),
+        max_length=512,
+        train_split=0.9
+    )
+    
+    train_dataset, eval_dataset = trainer.prepare_streaming_datasets(
+        source=source,
+        streaming_config=streaming_config
+    )
+    
+    print("Streaming datasets prepared")
+    print()
+    
+    return train_dataset, eval_dataset, source, streaming_config
+
+
+def execute_streaming_training(trainer, source, streaming_config, training_config, resume_from_checkpoint):
+    """Execute training with streaming datasets."""
+    print("5. Starting streaming training...")
+    print("-" * 40)
+    start_time = time.time()
+    
+    trainer_obj = trainer.train_streaming(
+        source=source,
+        streaming_config=streaming_config,
+        num_epochs=training_config.num_epochs,
+        batch_size=training_config.batch_size,
+        learning_rate=training_config.learning_rate,
+        save_steps=training_config.save_steps,
+        eval_steps=training_config.eval_steps,
+        resume_from_checkpoint=resume_from_checkpoint
+    )
+    
+    training_duration = time.time() - start_time
+    print("-" * 40)
+    print(f"Streaming training completed in {training_duration/60:.1f} minutes")
+    print()
+    
+    return trainer_obj, training_duration
 
 
 def initialize_trainer(model_config, wandb_run):
@@ -358,6 +438,90 @@ def train_single_model(
             print("WandB run completed")
 
 
+def train_single_model_streaming(
+    model_name: str = "custom-tiny",
+    config_type: str = "test",
+    max_samples: Optional[int] = None,
+    project_name: str = "dialog-model-training",
+    resume_from_checkpoint: Optional[str] = None
+) -> Tuple[Any, Dict[str, float]]:
+    """Train a single model using streaming for large datasets that don't fit in memory."""
+    print("=" * 60)
+    print("STREAMING MODEL TRAINING PIPELINE")
+    print("=" * 60)
+    print(f"Model: {model_name}")
+    print(f"Configuration: {config_type}")
+    print(f"Streaming Mode: ENABLED")
+    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print()
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Device: {device}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name()}")
+        print(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print()
+    
+    wandb_run = setup_wandb(project_name, f"{model_name}-streaming", config_type)
+    
+    try:
+        # Setup: Load configurations
+        model_config, training_config = load_and_validate_configs(model_name, config_type, max_samples)
+        
+        # Setup: Initialize trainer
+        trainer = initialize_trainer(model_config, wandb_run)
+        
+        # Prepare: Create streaming datasets
+        train_dataset, eval_dataset, source, streaming_config = prepare_streaming_datasets(trainer, training_config)
+        
+        # Train: Execute streaming training
+        trainer_obj, training_duration = execute_streaming_training(
+            trainer, source, streaming_config, training_config, resume_from_checkpoint
+        )
+        
+        # Test: Generation capabilities
+        generation_metrics = test_generation(trainer, wandb_run)
+        
+        # Log completion
+        if wandb_run:
+            wandb_run.log({
+                "experiment/status": "completed",
+                "experiment/total_duration_minutes": training_duration / 60,
+                "experiment/completion_timestamp": datetime.now().isoformat(),
+                "experiment/streaming_enabled": True,
+                "experiment/streaming_source": source,
+            })
+        
+        print("=" * 60)
+        print("STREAMING TRAINING PIPELINE COMPLETED SUCCESSFULLY")
+        print("=" * 60)
+        print(f"Model: {model_name}")
+        print(f"Streaming source: {source}")
+        print(f"Output directory: {model_config.output_dir}")
+        print(f"Training duration: {training_duration/60:.1f} minutes")
+        if wandb_run:
+            print(f"WandB run: {wandb_run.name}")
+            print(f"WandB URL: {wandb_run.url}")
+        print()
+        
+        return trainer, generation_metrics
+        
+    except Exception as e:
+        print(f"Streaming training failed: {e}")
+        if wandb_run:
+            wandb_run.log({
+                "experiment/status": "failed",
+                "experiment/error": str(e),
+                "experiment/streaming_enabled": True
+            })
+        raise
+        
+    finally:
+        if wandb_run:
+            wandb_run.finish()
+            print("WandB run completed")
+
+
 def main() -> None:
     """
     Main entry point with command-line argument parsing.
@@ -367,13 +531,14 @@ def main() -> None:
     and examples for different training scenarios.
     """
     parser = argparse.ArgumentParser(
-        description="Single Model Training Pipeline with WandB Integration",
+        description="Single Model Training Pipeline with WandB Integration and Streaming Support",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python train.py --model custom-tiny --config test --samples 50
   python train.py --model gpt2-small --config development
   python train.py --model custom-small --config production --project my-experiment
+  python train.py --model custom-tiny --config test --streaming
   python train.py --list-models
         """
     )
@@ -407,6 +572,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--streaming",
+        action="store_true",
+        help="Enable streaming mode for large datasets that don't fit in memory"
+    )
+    
+    parser.add_argument(
         "--resume", "-r",
         type=str,
         help="Path to checkpoint directory to resume from"
@@ -436,13 +607,24 @@ Examples:
     
     # Run the training pipeline
     try:
-        trainer, metrics = train_single_model(
-            model_name=args.model,
-            config_type=args.config,
-            max_samples=args.samples,
-            project_name=args.project,
-            resume_from_checkpoint=args.resume
-        )
+        if args.streaming:
+            print("Starting training in STREAMING mode...")
+            trainer, metrics = train_single_model_streaming(
+                model_name=args.model,
+                config_type=args.config,
+                max_samples=args.samples,
+                project_name=args.project,
+                resume_from_checkpoint=args.resume
+            )
+        else:
+            print("Starting training in STANDARD mode...")
+            trainer, metrics = train_single_model(
+                model_name=args.model,
+                config_type=args.config,
+                max_samples=args.samples,
+                project_name=args.project,
+                resume_from_checkpoint=args.resume
+            )
         
         print("Training pipeline completed successfully!")
         
