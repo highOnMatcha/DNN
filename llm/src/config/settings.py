@@ -105,6 +105,11 @@ class TrainingConfig:
     process, including optimization parameters, logging frequency, and data
     processing settings.
     
+    Common max_samples values:
+    - test: 50 (quick testing/debugging)
+    - development: 1000 (medium experiments)  
+    - production: None (full dataset)
+    
     Attributes:
         num_epochs: Number of training epochs to run.
         batch_size: Batch size for training and evaluation.
@@ -116,7 +121,10 @@ class TrainingConfig:
         save_steps: Frequency of saving model checkpoints.
         eval_steps: Frequency of running evaluation.
         weight_decay: Weight decay coefficient for regularization.
-        max_samples: Maximum number of samples to use (None for all data).
+        max_samples: Maximum number of samples to use for training. 
+                    None = use full dataset (production)
+                    Small number (50-1000) = quick testing/debugging
+                    Medium number (1000-10000) = development experiments
         train_split: Fraction of data to use for training vs evaluation.
         patience: Number of evaluation steps to wait for improvement before stopping.
         early_stopping_threshold: Minimum improvement threshold for early stopping.
@@ -132,7 +140,7 @@ class TrainingConfig:
     save_steps: int = 500
     eval_steps: int = 500
     weight_decay: float = 0.01
-    max_samples: Optional[int] = 1000  # For testing, use None for full dataset
+    max_samples: Optional[int] = None  # None = use full dataset, set to limit samples for testing
     train_split: float = 0.9
     patience: Optional[int] = None  # Number of eval steps to wait for improvement
     early_stopping_threshold: float = 0.0  # Minimum improvement needed
@@ -170,7 +178,8 @@ def get_production_config() -> TrainingConfig:
     Get configuration for production training.
     
     Loads production training parameters from JSON configuration or uses
-    sensible defaults for full-scale training with larger datasets.
+    sensible defaults for full-scale training with larger datasets. Uses
+    the full dataset (max_samples=None) by default.
     
     Returns:
         TrainingConfig instance configured for production training.
@@ -199,7 +208,8 @@ def get_test_config() -> TrainingConfig:
     Get configuration for testing and development.
     
     Loads test configuration parameters optimized for quick iteration
-    and debugging with smaller datasets and fewer epochs.
+    and debugging with smaller datasets and fewer epochs. Uses 50 samples
+    by default for fast testing cycles.
     
     Returns:
         TrainingConfig instance configured for testing.
@@ -212,7 +222,7 @@ def get_test_config() -> TrainingConfig:
         warmup_steps=test_config.get("warmup_steps", 20),
         warmup_ratio=test_config.get("warmup_ratio", None),
         lr_scheduler_type=test_config.get("lr_scheduler_type", "constant_with_warmup"),
-        max_samples=test_config.get("max_samples", 100),
+        max_samples=test_config.get("max_samples", 50),  # Small sample for quick testing
         save_steps=50,
         eval_steps=50,
         patience=test_config.get("patience", None),
@@ -228,7 +238,8 @@ def get_development_config() -> TrainingConfig:
     Get configuration for development training.
     
     Loads development configuration parameters that balance training time
-    with model quality for intermediate-scale experiments.
+    with model quality for intermediate-scale experiments. Uses 1000 samples
+    by default for meaningful development work.
     
     Returns:
         TrainingConfig instance configured for development.

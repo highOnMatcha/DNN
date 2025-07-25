@@ -114,7 +114,7 @@
       "patience": null,
       "early_stopping_threshold": 0.0,
       "weight_decay": 0.01,
-      "cache_memory_percent": 0.1,
+      "cache_memory_percent": 0.5,
       "description": "Quick testing configuration - simple scheduler, no early stopping, 30% RAM allocation with reasonable batch size"
     },
     "development": {
@@ -127,7 +127,7 @@
       "patience": 3,
       "early_stopping_threshold": 0.005,
       "weight_decay": 0.01,
-      "cache_memory_percent": 0.1,
+      "cache_memory_percent": 0.8,
       "description": "Development training configuration - cosine scheduler with moderate patience, 10% RAM cache"
     },
     "production": {
@@ -140,7 +140,7 @@
       "patience": 5,
       "early_stopping_threshold": 0.001,
       "weight_decay": 0.01,
-      "cache_memory_percent": 0.15,
+      "cache_memory_percent": 0.9,
       "description": "Full production training - cosine scheduler with conservative patience, 15% RAM cache"
     }
   }

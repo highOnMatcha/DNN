@@ -397,9 +397,17 @@ class DialogTrainer:
             estimated_steps_per_epoch = max(1, streaming_config.max_samples // batch_size)
             print(f"Using sample-based step calculation: {streaming_config.max_samples} samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
         else:
-            # Conservative estimate for unlimited streaming
-            estimated_steps_per_epoch = 1000
-            print(f"Using conservative estimate: {estimated_steps_per_epoch} steps per epoch for unlimited streaming")
+            # Get actual dataset size for unlimited streaming
+            try:
+                streaming_manager = get_streaming_manager()
+                dataset_info = streaming_manager.get_dataset_info('database')
+                train_samples = int(dataset_info['train_rows'])
+                estimated_steps_per_epoch = max(1, train_samples // batch_size)
+                print(f"Using full dataset step calculation: {train_samples} train samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
+            except Exception as e:
+                print(f"Warning: Could not get dataset size ({e}), using conservative estimate")
+                estimated_steps_per_epoch = 1000
+                print(f"Using conservative estimate: {estimated_steps_per_epoch} steps per epoch for unlimited streaming")
             
         total_steps = estimated_steps_per_epoch * num_epochs
         if config.warmup_ratio is not None:
