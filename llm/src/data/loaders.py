@@ -43,7 +43,7 @@ class DatasetManager:
         os.makedirs(self.data_dir, exist_ok=True)
     
     def load_dataset(self, force_download: bool = False, save_to_disk: bool = False, 
-                    prefer_database: bool = True) -> pd.DataFrame:
+                    prefer_database: bool = True, shuffle_database: bool = True) -> pd.DataFrame:
         """
         Load the Alpaca-GPT4 dataset prioritizing database and remote sources.
         
@@ -55,6 +55,7 @@ class DatasetManager:
             force_download: Whether to force re-download even if local sources exist.
             save_to_disk: Whether to save the downloaded dataset to local storage (deprecated).
             prefer_database: Whether to prefer database over file sources.
+            shuffle_database: Whether to randomly shuffle data when loading from database.
         
         Returns:
             DataFrame containing the loaded dataset.
@@ -63,9 +64,9 @@ class DatasetManager:
         if prefer_database and not force_download:
             try:
                 db_manager = DatabaseManager()
-                df = db_manager.load_from_database()
+                df = db_manager.load_from_database(shuffle=shuffle_database)
                 if df is not None and len(df) > 0:
-                    print(f"Loaded dataset from database: {len(df)} rows")
+                    print(f"Loaded dataset from database: {len(df)} rows{'(shuffled)' if shuffle_database else ''}")
                     return df
                 else:
                     print("Database contains no data, trying other sources...")
@@ -76,6 +77,11 @@ class DatasetManager:
         if os.path.exists(self.dataset_file) and not force_download:
             print(f"Loading dataset from local file: {self.dataset_file}")
             df = pd.read_csv(self.dataset_file)
+            
+            # Apply shuffling to CSV data if requested
+            if shuffle_database:
+                df = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+                print("Applied random shuffling to CSV data")
             
             # Optionally save to database if loaded from file
             if prefer_database:
@@ -91,6 +97,11 @@ class DatasetManager:
         # Priority 3: Download from remote source
         print(f"Downloading dataset from remote source: {self.dataset_url}")
         df = pd.read_parquet(self.dataset_url)
+        
+        # Apply shuffling to downloaded data if requested
+        if shuffle_database:
+            df = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+            print("Applied random shuffling to downloaded data")
         
         # Save to database first (for streaming), then optionally to disk
         if prefer_database:
@@ -290,7 +301,8 @@ class DatabaseManager:
             print(f"Error saving to PostgreSQL: {e}")
             return False
     
-    def load_from_database(self, table_name: str = "alpaca_gpt4_dataset") -> Optional[pd.DataFrame]:
+    def load_from_database(self, table_name: str = "alpaca_gpt4_dataset", 
+                          shuffle: bool = False) -> Optional[pd.DataFrame]:
         """
         Load DataFrame from PostgreSQL database table.
         
@@ -298,14 +310,23 @@ class DatabaseManager:
         
         Args:
             table_name: Name of the database table to load from.
+            shuffle: Whether to randomly shuffle the data during loading.
         
         Returns:
             DataFrame containing the table data, or None if load failed.
         """
         try:
             engine = create_engine(self.connection_string)
-            df = pd.read_sql_table(table_name, engine)
-            print(f"Successfully loaded {len(df)} rows from table '{table_name}'")
+            
+            if shuffle:
+                # Load with random ordering for better training diversity
+                query = f"SELECT * FROM {table_name} ORDER BY RANDOM()"
+                df = pd.read_sql_query(query, engine)
+                print(f"Successfully loaded {len(df)} rows from table '{table_name}' (shuffled)")
+            else:
+                df = pd.read_sql_table(table_name, engine)
+                print(f"Successfully loaded {len(df)} rows from table '{table_name}'")
+            
             return df
             
         except Exception as e:

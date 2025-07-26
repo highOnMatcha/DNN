@@ -227,12 +227,14 @@ class DialogTrainer:
         
         def tokenize_function(examples: dict) -> dict:
             """Tokenize text examples for model input."""
-            return self.tokenizer(
+            tokenized = self.tokenizer(
                 examples["text"], 
                 truncation=True, 
                 padding=False,
                 max_length=512
             )
+            # No need to add labels here - DataCollatorForLanguageModeling will handle this
+            return tokenized
         
         train_dataset = train_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
         eval_dataset = eval_dataset.map(tokenize_function, batched=True, remove_columns=["text"])
@@ -560,7 +562,7 @@ class DialogTrainer:
             eval_steps=eval_steps,
             eval_strategy="steps",
             save_strategy="steps",
-            load_best_model_at_end=True,
+            load_best_model_at_end=False,
             learning_rate=learning_rate,
             weight_decay=config.weight_decay,
             logging_dir=f"{self.config.output_dir}/logs",
@@ -568,6 +570,8 @@ class DialogTrainer:
             run_name=self.wandb_run.name if self.wandb_run else None,
             metric_for_best_model=config.metric_for_best_model,
             greater_is_better=False if "loss" in config.metric_for_best_model else True,
+            dataloader_pin_memory=False,  
+            remove_unused_columns=False, 
         )
         
         data_collator = DataCollatorForLanguageModeling(
@@ -578,14 +582,11 @@ class DialogTrainer:
         # Setup callbacks
         callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
         
-        # Add early stopping if patience is configured
+        # Disable early stopping for consistency with streaming mode
+        # (Early stopping can cause premature termination and loading of suboptimal checkpoints)
         if config.patience is not None:
-            early_stopping = EarlyStoppingCallback(
-                early_stopping_patience=config.patience,
-                early_stopping_threshold=config.early_stopping_threshold
-            )
-            callbacks.append(early_stopping)
-            print(f"Early stopping enabled: patience={config.patience}, threshold={config.early_stopping_threshold}")
+            print(f"Early stopping disabled for consistency with streaming mode")
+            print(f"(Originally configured: patience={config.patience}, threshold={config.early_stopping_threshold})")     
         
         trainer = Trainer(
             model=self.model,

@@ -151,11 +151,12 @@ def load_and_prepare_dataset(training_config):
     print("2. Loading dataset...")
     dataset_manager = get_dataset_manager()
     
-    # Use the new loading method that prioritizes database
+    # Use the new loading method that prioritizes database with shuffling
     df = dataset_manager.load_dataset(
         force_download=False,
         save_to_disk=False,  # Discourage CSV files
-        prefer_database=True  # Prioritize database for streaming support
+        prefer_database=True,  # Prioritize database for streaming support
+        shuffle_database=True  # Enable random shuffling for better training diversity
     )
     
     print(f"Dataset loaded: {len(df)} total samples")
@@ -169,7 +170,7 @@ def check_database_availability() -> bool:
     """Check if database is available and contains data."""
     try:
         db_manager = get_database_manager()
-        df = db_manager.load_from_database()
+        df = db_manager.load_from_database(shuffle=False)  # No shuffling for availability check
         if df is not None and len(df) > 0:
             print(f"Database available with {len(df)} rows")
             return True
@@ -338,12 +339,12 @@ def test_generation(trainer, wandb_run):
             start_time = time.time()
             response = trainer.generate_response(
                 instruction, 
-                max_length=100, 
+                max_length=300, 
                 log_to_wandb=bool(wandb_run)
             )
             generation_time = time.time() - start_time
             
-            print(f"Response: {response[:100]}{'...' if len(response) > 100 else ''}")
+            print(f"Response: {response[:200]}{'...' if len(response) > 200 else ''}")
             
             generation_metrics["total_time"] += generation_time
             generation_metrics["total_responses"] += 1

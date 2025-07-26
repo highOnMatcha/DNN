@@ -300,9 +300,9 @@ class StreamingDatasetIterator:
         self.current_cache_offset += batch_size
         self.samples_yielded += len(batch_df)
         
-        remaining_samples = len(current_chunk) - self.current_cache_offset
-        total_limit = f"/{self.config.max_samples}" if self.config.max_samples else ""
-        print(f"Serving {self.split} batch: {len(batch_df)} rows (total yielded: {self.samples_yielded:,}{total_limit}, remaining in RAM: {remaining_samples:,})")
+        #remaining_samples = len(current_chunk) - self.current_cache_offset
+        #total_limit = f"/{self.config.max_samples}" if self.config.max_samples else ""
+        #print(f"Serving {self.split} batch: {len(batch_df)} rows (total yielded: {self.samples_yielded:,}{total_limit}, remaining in RAM: {remaining_samples:,})")
         
         return batch_df
     
@@ -457,10 +457,16 @@ class StreamingDataManager:
             input_ids_tensor = torch.stack(padded_input_ids)
             attention_mask_tensor = torch.stack(padded_attention_mask)
             
+            # Create labels with proper padding token handling
+            # Set padding tokens to -100 so they are ignored in loss calculation
+            # This matches the behavior of DataCollatorForLanguageModeling
+            labels_tensor = input_ids_tensor.clone()
+            labels_tensor[labels_tensor == tokenizer.pad_token_id] = -100
+            
             return {
                 'input_ids': input_ids_tensor,
                 'attention_mask': attention_mask_tensor,
-                'labels': input_ids_tensor.clone()  # For language modeling
+                'labels': labels_tensor  # For language modeling with proper padding handling
             }
         
         train_dataloader = DataLoader(
