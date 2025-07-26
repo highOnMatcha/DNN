@@ -17,6 +17,7 @@ parts/
 sdist/
 var/
 wheels/
+export/
 
 # Data files
 *.csv
