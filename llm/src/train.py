@@ -182,31 +182,23 @@ def check_database_availability() -> bool:
         return False
 
 
-def setup_streaming_source(prefer_database: bool = True) -> str:
+def check_streaming_availability() -> bool:
     """
-    Determine the best streaming source based on availability.
+    Check if streaming is available by verifying database connectivity.
     
-    Args:
-        prefer_database: Whether to prefer database over remote sources
-        
     Returns:
-        Source string: 'database' or 'remote'
+        True if streaming is available, False otherwise
     """
-    if prefer_database and check_database_availability():
-        return "database"
-    else:
-        print("Falling back to remote source (not yet implemented)")
-        # For now, we'll still try database even if check failed
-        # In production, you'd implement remote streaming here
-        return "database"
+    return check_database_availability()
 
 
 def prepare_streaming_datasets(trainer, training_config):
     """Prepare streaming datasets for large data training."""
     print("4. Preparing streaming datasets...")
     
-    # Determine best streaming source
-    source = setup_streaming_source(prefer_database=True)
+    # Check streaming availability
+    if not check_streaming_availability():
+        print("Warning: Database not available for streaming")
     
     # Create streaming config based on training config
     streaming_config = StreamingConfig(
@@ -217,24 +209,22 @@ def prepare_streaming_datasets(trainer, training_config):
     )
     
     train_dataset, eval_dataset = trainer.prepare_streaming_datasets(
-        source=source,
         streaming_config=streaming_config
     )
     
     print("Streaming datasets prepared")
     print()
     
-    return train_dataset, eval_dataset, source, streaming_config
+    return train_dataset, eval_dataset, streaming_config
 
 
-def execute_streaming_training(trainer, source, streaming_config, training_config, resume_from_checkpoint):
+def execute_streaming_training(trainer, streaming_config, training_config, resume_from_checkpoint):
     """Execute training with streaming datasets."""
     print("5. Starting streaming training...")
     print("-" * 40)
     start_time = time.time()
     
     trainer_obj = trainer.train_streaming(
-        source=source,
         streaming_config=streaming_config,
         num_epochs=training_config.num_epochs,
         batch_size=training_config.batch_size,
@@ -502,11 +492,11 @@ def train_single_model_streaming(
         trainer = initialize_trainer(model_config, wandb_run)
         
         # Prepare: Create streaming datasets
-        train_dataset, eval_dataset, source, streaming_config = prepare_streaming_datasets(trainer, training_config)
+        train_dataset, eval_dataset, streaming_config = prepare_streaming_datasets(trainer, training_config)
         
         # Train: Execute streaming training
         trainer_obj, training_duration = execute_streaming_training(
-            trainer, source, streaming_config, training_config, resume_from_checkpoint
+            trainer, streaming_config, training_config, resume_from_checkpoint
         )
         
         # Test: Generation capabilities
@@ -519,14 +509,14 @@ def train_single_model_streaming(
                 "experiment/total_duration_minutes": training_duration / 60,
                 "experiment/completion_timestamp": datetime.now().isoformat(),
                 "experiment/streaming_enabled": True,
-                "experiment/streaming_source": source,
+                "experiment/streaming_source": "database",
             })
         
         print("=" * 60)
         print("STREAMING TRAINING PIPELINE COMPLETED SUCCESSFULLY")
         print("=" * 60)
         print(f"Model: {model_name}")
-        print(f"Streaming source: {source}")
+        print("Streaming source: database")
         print(f"Output directory: {model_config.output_dir}")
         print(f"Training duration: {training_duration/60:.1f} minutes")
         if wandb_run:

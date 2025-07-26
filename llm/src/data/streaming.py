@@ -1,10 +1,8 @@
 """
-Streaming data utilities for handling large datasets that don't fit in memory.
+Streaming data utilities for large datasets.
 
-This module provides streaming data capabilities for training on datasets
-that are too large to load into memory at once. It supports streaming from
-both PostgreSQL databases and remote sources, with efficient batching and
-automatic dataset splitting.
+Provides efficient streaming from PostgreSQL databases with intelligent memory
+allocation and chunked processing for datasets that exceed available RAM.
 """
 
 import os
@@ -19,7 +17,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader, IterableDataset
 from sqlalchemy import create_engine, text
-from transformers import PreTrainedTokenizer
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase as PreTrainedTokenizer
 
 # Add project root to path for imports
 current_dir = Path(__file__).parent.parent
@@ -31,45 +29,37 @@ from data.loaders import DatabaseManager
 @dataclass
 class StreamingConfig:
     """Configuration for streaming dataset operations."""
-    batch_size: int = 1000  # Size of chunks fetched from database
+    batch_size: int = 1000
     max_length: int = 512
     buffer_size: int = 10000
     prefetch_factor: int = 2
     num_workers: int = 0
     train_split: float = 0.9
     shuffle_buffer: int = 1000
-    # Memory allocation for optimal fetching
-    cache_memory_percent: float = 0.1  # Use 10% of available RAM for data chunks
-    # Remote dataset configuration
-    remote_dataset_url: Optional[str] = None  # URL for remote datasets
-    table_name: str = "alpaca_gpt4_dataset"  # Database table name
-    # Monte Carlo sampling configuration
-    monte_carlo_sample_size: int = 1000  # Number of rows to sample for memory estimation
+    cache_memory_percent: float = 0.1  # Use 10% of available RAM for chunks
+    table_name: str = "alpaca_gpt4_dataset"
+    monte_carlo_sample_size: int = 1000  # Rows for memory estimation
     memory_safety_margin: float = 0.2  # 20% safety margin for memory fluctuations
-    # Sample limiting for testing
-    max_samples: Optional[int] = None  # Maximum number of samples to process
+    max_samples: Optional[int] = None  # Limit samples for testing
 
 
 class StreamingDatasetIterator:
-    """Iterator for streaming data from database or remote source with intelligent prefetching.
+    """Iterator for streaming data from database with intelligent prefetching.
     
-    This iterator implements a prefetching strategy to minimize database round trips by 
-    fetching large chunks of data and serving them incrementally to the training process.
-    The cache acts as a prefetch buffer to reduce database latency, not for data reuse.
+    Implements optimal chunk fetching based on available memory allocation
+    to minimize database round trips while staying within memory constraints.
     """
     
-    def __init__(self, source: str, config: StreamingConfig, split: str = "train", 
+    def __init__(self, config: StreamingConfig, split: str = "train", 
                  cached_dataset_info: Optional[Dict[str, Any]] = None):
         """
-        Initialize streaming iterator with caching.
+        Initialize streaming iterator.
         
         Args:
-            source: Data source - 'database' or 'remote'
             config: Streaming configuration
             split: Dataset split - 'train' or 'eval'
             cached_dataset_info: Pre-computed dataset info to avoid redundant SQL queries
         """
-        self.source = source
         self.config = config
         self.split = split
         self.current_offset = 0
@@ -77,10 +67,10 @@ class StreamingDatasetIterator:
         self.is_exhausted = False
         self.cached_dataset_info = cached_dataset_info
         
-        # Simple buffer variables for single optimal chunk
-        self.cache = deque()  # Single optimal chunk storage
-        self.cache_memory_used = 0  # Track memory usage in bytes
-        self.current_cache_offset = 0  # Track position within current chunk
+        # Buffer variables for single optimal chunk
+        self.cache = deque()
+        self.cache_memory_used = 0
+        self.current_cache_offset = 0
         self.samples_yielded = 0
         
         # Split-specific configuration
@@ -89,13 +79,8 @@ class StreamingDatasetIterator:
         
         print(f"Initializing streaming with Monte Carlo optimal fetching for {split} split")
         
-        if source == "database":
-            self.db_manager = DatabaseManager()
-            self._init_database_streaming()
-        elif source == "remote":
-            self._init_remote_streaming()
-        else:
-            raise ValueError(f"Unsupported source: {source}")
+        self.db_manager = DatabaseManager()
+        self._init_database_streaming()
     
     def _calculate_optimal_fetch_size(self) -> int:
         """Calculate how many rows to fetch based on available RAM allocation using Monte Carlo sampling."""
@@ -118,7 +103,7 @@ class StreamingDatasetIterator:
             sample_df = pd.read_sql_query(query, engine)
             actual_memory_per_row = self._estimate_dataframe_memory(sample_df) / len(sample_df)
             
-            # Add configurable safety margin for memory fluctuations
+            # Add safety margin for memory fluctuations
             estimated_bytes_per_row = int(actual_memory_per_row * (1 + self.config.memory_safety_margin))
             optimal_rows = allocated_memory // estimated_bytes_per_row
             
@@ -159,7 +144,6 @@ class StreamingDatasetIterator:
             engine = create_engine(self.db_manager.connection_string)
             
             # Use SQL LIMIT and OFFSET to handle boundaries automatically
-            # Add split_start_offset to current_offset for proper positioning
             absolute_offset = self.split_start_offset + self.current_offset
             
             query = f"""
@@ -224,15 +208,6 @@ class StreamingDatasetIterator:
             print(f"Error initializing database streaming: {e}")
             raise
     
-    def _init_remote_streaming(self):
-        """Initialize remote streaming from configurable source."""
-        if self.config.remote_dataset_url:
-            self.dataset_url = self.config.remote_dataset_url
-            print(f"Remote streaming initialized with URL: {self.dataset_url}")
-        else:
-            print("Remote streaming initialized but no URL configured")
-            self.dataset_url = None
-    
     def __iter__(self):
         """Return self as iterator."""
         return self
@@ -242,10 +217,7 @@ class StreamingDatasetIterator:
         if self.is_exhausted:
             raise StopIteration
             
-        if self.source == "database":
-            return self._next_database_batch()
-        elif self.source == "remote":
-            return self._next_remote_batch()
+        return self._next_database_batch()
     
     def _next_database_batch(self) -> pd.DataFrame:
         """Get next batch from database using optimal memory allocation."""
@@ -300,38 +272,24 @@ class StreamingDatasetIterator:
         self.current_cache_offset += batch_size
         self.samples_yielded += len(batch_df)
         
-        #remaining_samples = len(current_chunk) - self.current_cache_offset
-        #total_limit = f"/{self.config.max_samples}" if self.config.max_samples else ""
-        #print(f"Serving {self.split} batch: {len(batch_df)} rows (total yielded: {self.samples_yielded:,}{total_limit}, remaining in RAM: {remaining_samples:,})")
-        
         return batch_df
-    
-    def _next_remote_batch(self) -> pd.DataFrame:
-        """Get next batch from remote source."""
-        # This is a placeholder implementation
-        # In practice, you'd implement chunked reading from parquet files
-        # For now, we'll raise StopIteration to indicate no remote streaming yet
-        self.is_exhausted = True
-        raise StopIteration
 
 
 class StreamingTextDataset(IterableDataset):
     """Streaming dataset for text data that doesn't fit in memory."""
     
-    def __init__(self, source: str, tokenizer: PreTrainedTokenizer, 
+    def __init__(self, tokenizer: PreTrainedTokenizer, 
                  config: StreamingConfig, split: str = "train", 
                  cached_dataset_info: Optional[Dict[str, Any]] = None):
         """
         Initialize streaming text dataset.
         
         Args:
-            source: Data source - 'database' or 'remote'
             tokenizer: HuggingFace tokenizer for text processing
             config: Streaming configuration
             split: Dataset split - 'train' or 'eval'
             cached_dataset_info: Pre-computed dataset info to avoid redundant SQL queries
         """
-        self.source = source
         self.tokenizer = tokenizer
         self.config = config
         self.split = split
@@ -339,7 +297,7 @@ class StreamingTextDataset(IterableDataset):
         
     def __iter__(self):
         """Iterate over tokenized samples."""
-        data_iterator = StreamingDatasetIterator(self.source, self.config, self.split, self.cached_dataset_info)
+        data_iterator = StreamingDatasetIterator(self.config, self.split, self.cached_dataset_info)
         samples_yielded = 0
         
         for batch_df in data_iterator:
@@ -361,8 +319,8 @@ class StreamingTextDataset(IterableDataset):
                 
                 # Yield tokenized sample
                 yield {
-                    'input_ids': tokenized['input_ids'].squeeze(),
-                    'attention_mask': tokenized['attention_mask'].squeeze()
+                    'input_ids': tokenized.input_ids.squeeze(0),
+                    'attention_mask': tokenized.attention_mask.squeeze(0)
                 }
                 
                 samples_yielded += 1
@@ -380,19 +338,18 @@ class StreamingDataManager:
         """
         self.config = config
         
-    def create_streaming_datasets(self, source: str, tokenizer: PreTrainedTokenizer) -> Tuple[StreamingTextDataset, StreamingTextDataset]:
+    def create_streaming_datasets(self, tokenizer: PreTrainedTokenizer) -> Tuple[StreamingTextDataset, StreamingTextDataset]:
         """
         Create streaming train and evaluation datasets.
         
         Args:
-            source: Data source - 'database' or 'remote'
             tokenizer: HuggingFace tokenizer
             
         Returns:
             Tuple of (train_dataset, eval_dataset)
         """
         # Get dataset info once and cache it to avoid redundant SQL queries
-        cached_info = self.get_dataset_info(source=source) if source == 'database' else None
+        cached_info = self.get_dataset_info()
         
         # Create separate configs for train and eval
         train_config = self.config
@@ -407,30 +364,28 @@ class StreamingDataManager:
             train_split=self.config.train_split,
             shuffle_buffer=self.config.shuffle_buffer,
             cache_memory_percent=self.config.cache_memory_percent,
-            remote_dataset_url=self.config.remote_dataset_url,
             table_name=self.config.table_name,
             monte_carlo_sample_size=self.config.monte_carlo_sample_size,
             memory_safety_margin=self.config.memory_safety_margin,
             max_samples=min(50, self.config.max_samples // 10) if self.config.max_samples else 50  # Limit eval to 50 samples or 1/10 of max_samples
         )
         
-        train_dataset = StreamingTextDataset(source, tokenizer, train_config, "train", cached_info)
-        eval_dataset = StreamingTextDataset(source, tokenizer, eval_config, "eval", cached_info)
+        train_dataset = StreamingTextDataset(tokenizer, train_config, "train", cached_info)
+        eval_dataset = StreamingTextDataset(tokenizer, eval_config, "eval", cached_info)
         
         return train_dataset, eval_dataset
     
-    def create_streaming_dataloaders(self, source: str, tokenizer: PreTrainedTokenizer) -> Tuple[DataLoader, DataLoader]:
+    def create_streaming_dataloaders(self, tokenizer: PreTrainedTokenizer) -> Tuple[DataLoader, DataLoader]:
         """
         Create streaming data loaders for training.
         
         Args:
-            source: Data source - 'database' or 'remote'
             tokenizer: HuggingFace tokenizer
             
         Returns:
             Tuple of (train_dataloader, eval_dataloader)
         """
-        train_dataset, eval_dataset = self.create_streaming_datasets(source, tokenizer)
+        train_dataset, eval_dataset = self.create_streaming_datasets(tokenizer)
         
         def collate_fn(batch):
             """Collate function for batching tokenized samples with padding."""
@@ -446,7 +401,18 @@ class StreamingDataManager:
             for i, seq in enumerate(input_ids):
                 # Pad input_ids
                 padding_length = max_length - len(seq)
-                padded_seq = torch.cat([seq, torch.full((padding_length,), tokenizer.pad_token_id)])
+                if padding_length > 0:
+                    # Use a safe default padding token (0) if tokenizer pad_token_id is problematic
+                    pad_id = 0
+                    if hasattr(tokenizer, 'pad_token_id') and isinstance(tokenizer.pad_token_id, int):
+                        pad_id = tokenizer.pad_token_id
+                    elif hasattr(tokenizer, 'eos_token_id') and isinstance(tokenizer.eos_token_id, int):
+                        pad_id = tokenizer.eos_token_id
+                    
+                    padding_tensor = torch.full((padding_length,), pad_id, dtype=seq.dtype)
+                    padded_seq = torch.cat([seq, padding_tensor])
+                else:
+                    padded_seq = seq
                 padded_input_ids.append(padded_seq)
                 
                 # Pad attention_mask
@@ -458,10 +424,15 @@ class StreamingDataManager:
             attention_mask_tensor = torch.stack(padded_attention_mask)
             
             # Create labels with proper padding token handling
-            # Set padding tokens to -100 so they are ignored in loss calculation
-            # This matches the behavior of DataCollatorForLanguageModeling
             labels_tensor = input_ids_tensor.clone()
-            labels_tensor[labels_tensor == tokenizer.pad_token_id] = -100
+            # Use the same pad_id logic as above
+            pad_id = 0
+            if hasattr(tokenizer, 'pad_token_id') and isinstance(tokenizer.pad_token_id, int):
+                pad_id = tokenizer.pad_token_id
+            elif hasattr(tokenizer, 'eos_token_id') and isinstance(tokenizer.eos_token_id, int):
+                pad_id = tokenizer.eos_token_id
+            
+            labels_tensor[labels_tensor == pad_id] = -100
             
             return {
                 'input_ids': input_ids_tensor,
@@ -485,55 +456,41 @@ class StreamingDataManager:
         
         return train_dataloader, eval_dataloader
     
-    def get_dataset_info(self, source: str) -> Dict[str, Any]:
+    def get_dataset_info(self) -> Dict[str, Any]:
         """
         Get information about the streaming dataset.
-        
-        Args:
-            source: Data source - 'database' or 'remote'
             
         Returns:
             Dictionary with dataset information
         """
-        if source == "database":
-            db_manager = DatabaseManager()
-            try:
-                engine = create_engine(db_manager.connection_string)
-                with engine.connect() as connection:
-                    # Get total count
-                    result = connection.execute(text(f"SELECT COUNT(*) FROM {self.config.table_name}"))
-                    row = result.fetchone()
-                    total_rows = row[0] if row else 0
-                    
-                    # Get sample for column info
-                    sample_df = pd.read_sql_query(f"SELECT * FROM {self.config.table_name} LIMIT 5", engine)
-                    
-                    split_idx = int(total_rows * self.config.train_split)
-                    
-                    return {
-                        'source': 'database',
-                        'total_rows': total_rows,
-                        'train_rows': split_idx,
-                        'eval_rows': total_rows - split_idx,
-                        'columns': sample_df.columns.tolist(),
-                        'dtypes': sample_df.dtypes.to_dict(),
-                        'streaming': True,
-                        'batch_size': self.config.batch_size
-                    }
-                    
-            except Exception as e:
-                print(f"Error getting database info: {e}")
-                return {'source': 'database', 'error': str(e)}
+        db_manager = DatabaseManager()
+        try:
+            engine = create_engine(db_manager.connection_string)
+            with engine.connect() as connection:
+                # Get total count
+                result = connection.execute(text(f"SELECT COUNT(*) FROM {self.config.table_name}"))
+                row = result.fetchone()
+                total_rows = row[0] if row else 0
                 
-        elif source == "remote":
-            return {
-                'source': 'remote',
-                'streaming': True,
-                'note': 'Remote streaming not yet implemented',
-                'batch_size': self.config.batch_size
-            }
-        else:
-            return {'error': f'Unknown source: {source}'}
+                # Get sample for column info
+                sample_df = pd.read_sql_query(f"SELECT * FROM {self.config.table_name} LIMIT 5", engine)
+                
+                split_idx = int(total_rows * self.config.train_split)
+                
+                return {
+                    'source': 'database',
+                    'total_rows': total_rows,
+                    'train_rows': split_idx,
+                    'eval_rows': total_rows - split_idx,
+                    'columns': sample_df.columns.tolist(),
+                    'dtypes': sample_df.dtypes.to_dict(),
+                    'streaming': True,
+                    'batch_size': self.config.batch_size
+                }
+                
+        except Exception as e:
+            print(f"Error getting database info: {e}")
+            return {'source': 'database', 'error': str(e)}
 
 
 def get_streaming_manager(config: Optional[StreamingConfig] = None) -> StreamingDataManager:

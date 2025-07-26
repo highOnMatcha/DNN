@@ -241,17 +241,14 @@ class DialogTrainer:
         
         return train_dataset, eval_dataset
     
-    def prepare_streaming_datasets(self, source: str = "database", 
-                                 streaming_config: Optional[StreamingConfig] = None) -> Tuple[Any, Any]:
+    def prepare_streaming_datasets(self, streaming_config: Optional[StreamingConfig] = None) -> Tuple[Any, Any]:
         """
         Prepare streaming datasets for training with large data that doesn't fit in memory.
         
-        This method creates streaming datasets that load data in batches from either
-        a database or remote source, avoiding the need to load the entire dataset
-        into memory at once.
+        This method creates streaming datasets that load data in batches from
+        a database, avoiding the need to load the entire dataset into memory at once.
         
         Args:
-            source: Data source - 'database' or 'remote'. Default is 'database'.
             streaming_config: Configuration for streaming behavior. If None, uses default.
         
         Returns:
@@ -260,30 +257,28 @@ class DialogTrainer:
         if streaming_config is None:
             streaming_config = StreamingConfig()
             
-        print(f"Preparing streaming datasets from {source}...")
+        print("Preparing streaming datasets from database...")
         
         # Create streaming manager
         streaming_manager = get_streaming_manager(streaming_config)
         
         # Get dataset info
-        dataset_info = streaming_manager.get_dataset_info(source)
+        dataset_info = streaming_manager.get_dataset_info()
         print(f"Dataset info: {dataset_info}")
         
         # Create streaming datasets
         train_dataset, eval_dataset = streaming_manager.create_streaming_datasets(
-            source, self.tokenizer
+            self.tokenizer
         )
         
         print(f"Streaming datasets created:")
-        print(f"  - Source: {source}")
         print(f"  - Batch size: {streaming_config.batch_size}")
         print(f"  - Train split: {streaming_config.train_split:.1%}")
         print(f"  - Max length: {streaming_config.max_length}")
         
         return train_dataset, eval_dataset
     
-    def train_streaming(self, source: str = "database", 
-                       streaming_config: Optional[StreamingConfig] = None,
+    def train_streaming(self, streaming_config: Optional[StreamingConfig] = None,
                        num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,
                        save_steps: int = 500, eval_steps: int = 500, 
                        resume_from_checkpoint: Optional[str] = None) -> Trainer:
@@ -291,10 +286,9 @@ class DialogTrainer:
         Train the model using streaming datasets for large data that doesn't fit in memory.
         
         This method handles training with streaming datasets, automatically managing
-        data loading in batches from the specified source.
+        data loading in batches from the database.
         
         Args:
-            source: Data source - 'database' or 'remote'.
             streaming_config: Configuration for streaming behavior.
             num_epochs: Number of training epochs.
             batch_size: Batch size for training and evaluation.
@@ -336,7 +330,7 @@ class DialogTrainer:
         print("=" * 50)
         print("STREAMING TRAINING MODE")
         print("=" * 50)
-        print(f"Source: {source}")
+        print("Source: database")
         print(f"Streaming batch size: {streaming_config.batch_size}")
         print(f"Training batch size: {batch_size}")
         print(f"Prefetch buffer: {config.cache_memory_percent:.1%} of RAM")
@@ -347,7 +341,7 @@ class DialogTrainer:
         streaming_manager = get_streaming_manager(streaming_config)
         
         # Get dataset info for logging
-        dataset_info = streaming_manager.get_dataset_info(source)
+        dataset_info = streaming_manager.get_dataset_info()
         
         if self.wandb_run:
             training_params = {
@@ -355,7 +349,7 @@ class DialogTrainer:
                 "batch_size": batch_size,
                 "learning_rate": learning_rate,
                 "streaming_enabled": True,
-                "streaming_source": source,
+                "streaming_source": "database",
                 "streaming_batch_size": streaming_config.batch_size,
                 "streaming_train_split": streaming_config.train_split,
                 "max_length": streaming_config.max_length,
@@ -371,14 +365,14 @@ class DialogTrainer:
         # Create streaming dataloaders
         try:
             train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
-                source, self.tokenizer
+                self.tokenizer
             )
-            print(f"Successfully created streaming dataloaders from {source}")
+            print("Successfully created streaming dataloaders from database")
         except Exception as e:
             print(f"Warning: Failed to create streaming dataloaders: {e}")
             print("Falling back to evaluation-disabled mode")
             train_dataloader, eval_dataloader = streaming_manager.create_streaming_dataloaders(
-                source, self.tokenizer
+                self.tokenizer
             ), None
         
         # Create minimal dummy datasets for the Trainer (required even with custom dataloaders)
@@ -402,7 +396,7 @@ class DialogTrainer:
             # Get actual dataset size for unlimited streaming
             try:
                 streaming_manager = get_streaming_manager()
-                dataset_info = streaming_manager.get_dataset_info('database')
+                dataset_info = streaming_manager.get_dataset_info()
                 train_samples = int(dataset_info['train_rows'])
                 estimated_steps_per_epoch = max(1, train_samples // batch_size)
                 print(f"Using full dataset step calculation: {train_samples} train samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
