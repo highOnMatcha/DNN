@@ -3,31 +3,31 @@
     "gpt2-small": {
       "name": "gpt2",
       "description": "Base GPT-2 (117M parameters) - Good for learning/testing",
-      "output_dir": "./models/gpt2_small",
+      "output_dir": "./src/models/gpt2_small",
       "from_scratch": false
     },
     "gpt2-medium": {
       "name": "gpt2-medium",
       "description": "Medium GPT-2 (345M parameters) - Better quality",
-      "output_dir": "./models/gpt2_medium",
+      "output_dir": "./src/models/gpt2_medium",
       "from_scratch": false
     },
     "dialogpt-small": {
       "name": "microsoft/DialoGPT-small",
       "description": "DialoGPT Small (117M parameters) - Optimized for dialogue",
-      "output_dir": "./models/dialogpt_small",
+      "output_dir": "./src/models/dialogpt_small",
       "from_scratch": false
     },
     "dialogpt-medium": {
       "name": "microsoft/DialoGPT-medium",
       "description": "DialoGPT Medium (345M parameters) - Better dialogue quality",
-      "output_dir": "./models/dialogpt_medium",
+      "output_dir": "./src/models/dialogpt_medium",
       "from_scratch": false
     },
     "alpaca-dialogpt": {
       "name": "AmLibra/dialogpt-small-alpaca",
       "description": "Pre-trained on Alpaca dataset (117M parameters)",
-      "output_dir": "./models/alpaca_dialogpt",
+      "output_dir": "./src/models/alpaca_dialogpt",
       "from_scratch": false
     }
   },
@@ -35,7 +35,7 @@
     "custom-small": {
       "name": "custom-gpt-small",
       "description": "Custom GPT model from scratch (50M parameters)",
-      "output_dir": "./models/custom_small",
+      "output_dir": "./src/models/custom_small",
       "from_scratch": true,
       "architecture": {
         "n_embd": 512,
@@ -49,7 +49,7 @@
     "custom-medium": {
       "name": "custom-gpt-medium",
       "description": "Custom GPT model from scratch (100M parameters)",
-      "output_dir": "./models/custom_medium",
+      "output_dir": "./src/models/custom_medium",
       "from_scratch": true,
       "architecture": {
         "n_embd": 768,
@@ -63,7 +63,7 @@
     "custom-large": {
       "name": "custom-gpt-large",
       "description": "Custom GPT model from scratch (200M parameters)",
-      "output_dir": "./models/custom_large",
+      "output_dir": "./src/models/custom_large",
       "from_scratch": true,
       "architecture": {
         "n_embd": 1024,
@@ -77,7 +77,7 @@
     "custom-tiny": {
       "name": "custom-gpt-tiny",
       "description": "Tiny custom model for testing (10M parameters)",
-      "output_dir": "./models/custom_tiny",
+      "output_dir": "./src/models/custom_tiny",
       "from_scratch": true,
       "architecture": {
         "n_embd": 256,
@@ -91,7 +91,7 @@
     "custom-nano": {
       "name": "custom-gpt-nano",
       "description": "Ultra-tiny model for rapid testing (5M parameters)",
-      "output_dir": "./models/custom_nano",
+      "output_dir": "./src/models/custom_nano",
       "from_scratch": true,
       "architecture": {
         "n_embd": 128,

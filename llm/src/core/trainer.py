@@ -19,12 +19,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.training_args import TrainingArguments
 from transformers.trainer import Trainer
 from transformers.data.data_collator import DataCollatorForLanguageModeling
-from transformers.trainer_callback import TrainerCallback, EarlyStoppingCallback
+from transformers.trainer_callback import TrainerCallback
 
 # Add imports for streaming support
 current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
-from data.streaming import StreamingDataManager, StreamingConfig, get_streaming_manager
+from data.streaming import StreamingConfig, get_streaming_manager
 
 
 class WandBCallback(TrainerCallback):
@@ -168,14 +168,63 @@ class DialogTrainer:
     
     def _init_custom_model(self) -> None:
         """
-        Initialize custom model from scratch.
+        Initialize custom model from scratch or load existing trained weights.
         
-        Creates a custom GPT-style model using the architecture parameters
-        specified in the configuration. Uses GPT-2 tokenizer for compatibility.
+        First attempts to load existing trained model from the output directory.
+        If no trained model exists, creates a new custom GPT-style model using 
+        the architecture parameters specified in the configuration.
         """
-        print(f"Building model: {self.config.name}")
+        print(f"Initializing model: {self.config.name}")
         print(f"Architecture: {self.config.n_layer} layers, {self.config.n_embd} dim, {self.config.n_head} heads")
         print(f"Output: {self.config.output_dir}")
+        
+        # Try to load existing trained model first
+        output_path = Path(self.config.output_dir)
+        model_file = output_path / "model.safetensors"
+        pytorch_model_file = output_path / "pytorch_model.bin"
+        config_file = output_path / "config.json"
+        
+        if (model_file.exists() or pytorch_model_file.exists()) and config_file.exists():
+            print(f"Loading existing trained model from {output_path}")
+            try:
+                # Load tokenizer from the trained model directory
+                self.tokenizer = AutoTokenizer.from_pretrained(str(output_path))
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                
+                # For custom models, we need to create the model architecture first
+                # and then load the weights, since HuggingFace doesn't recognize our custom type
+                try:
+                    from .models import create_custom_model
+                except ImportError:
+                    from core.models import create_custom_model
+                    
+                # Create the model architecture using our custom config
+                self.model = create_custom_model(self.config)
+                
+                # Load the trained weights
+                if model_file.exists():
+                    print(f"Loading weights from safetensors file...")
+                    from safetensors.torch import load_file
+                    state_dict = load_file(str(model_file), device="cpu")
+                elif pytorch_model_file.exists():
+                    print(f"Loading weights from pytorch_model.bin...")
+                    state_dict = torch.load(str(pytorch_model_file), map_location="cpu")
+                else:
+                    raise FileNotFoundError("No model weights file found")
+                
+                # Load the state dict into our model
+                self.model.load_state_dict(state_dict)
+                self.model.to(self.device)
+                print(f"Successfully loaded trained custom model from {output_path}")
+                return
+                
+            except Exception as e:
+                print(f"Warning: Failed to load trained model: {e}")
+                print("Falling back to creating new model...")
+        
+        # Fallback: Create new model from scratch
+        print(f"Building new model from scratch")
         
         self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self.tokenizer.pad_token is None:
@@ -334,7 +383,7 @@ class DialogTrainer:
         print(f"Streaming batch size: {streaming_config.batch_size}")
         print(f"Training batch size: {batch_size}")
         print(f"Prefetch buffer: {config.cache_memory_percent:.1%} of RAM")
-        print(f"Strategy: Monte Carlo sampling for optimal memory usage")
+        print(f"Memory management: Dynamic streaming with prefetch optimization")
         print()
         
         # Create streaming manager
@@ -379,31 +428,26 @@ class DialogTrainer:
         dummy_train = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
         dummy_eval = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
         
-        # For streaming, we need to be more conservative with evaluation
-        # since we don't know the exact dataset size ahead of time
+        # Conservative evaluation settings for streaming datasets
         if config.patience is not None:
-            # Disable early stopping for streaming to avoid complications
             config.patience = None
-            print("Early stopping disabled for streaming mode due to dataset size uncertainty")
+            print("Early stopping disabled for streaming mode due to variable dataset size")
         
-        # Calculate warmup steps (estimate for streaming)
-        # Calculate steps based on actual sample limits
+        # Calculate training steps for streaming datasets
         if streaming_config.max_samples is not None:
-            # Use actual sample count for accurate step calculation
             estimated_steps_per_epoch = max(1, streaming_config.max_samples // batch_size)
-            print(f"Using sample-based step calculation: {streaming_config.max_samples} samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
+            print(f"Steps per epoch: {estimated_steps_per_epoch} ({streaming_config.max_samples} samples / {batch_size} batch size)")
         else:
-            # Get actual dataset size for unlimited streaming
             try:
                 streaming_manager = get_streaming_manager()
                 dataset_info = streaming_manager.get_dataset_info()
                 train_samples = int(dataset_info['train_rows'])
                 estimated_steps_per_epoch = max(1, train_samples // batch_size)
-                print(f"Using full dataset step calculation: {train_samples} train samples / {batch_size} batch size = {estimated_steps_per_epoch} steps per epoch")
+                print(f"Steps per epoch: {estimated_steps_per_epoch} ({train_samples} samples / {batch_size} batch size)")
             except Exception as e:
-                print(f"Warning: Could not get dataset size ({e}), using conservative estimate")
+                print(f"Warning: Could not determine dataset size ({e}), using default estimate")
                 estimated_steps_per_epoch = 1000
-                print(f"Using conservative estimate: {estimated_steps_per_epoch} steps per epoch for unlimited streaming")
+                print(f"Using default estimate: {estimated_steps_per_epoch} steps per epoch")
             
         total_steps = estimated_steps_per_epoch * num_epochs
         if config.warmup_ratio is not None:
@@ -464,7 +508,7 @@ class DialogTrainer:
             trainer.get_eval_dataloader = lambda *args, **kwargs: eval_dataloader
         
         print("Starting streaming training...")
-        print(f"Learning rate scheduler: {config.lr_scheduler_type}")
+        print(f"LR scheduler: {config.lr_scheduler_type}")
         print(f"Warmup steps: {warmup_steps}")
         print(f"Max training steps: {max_steps}")
         print(f"Evaluation: {'Enabled' if eval_dataloader is not None else 'Disabled'}")
@@ -576,11 +620,9 @@ class DialogTrainer:
         # Setup callbacks
         callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
         
-        # Disable early stopping for consistency with streaming mode
-        # (Early stopping can cause premature termination and loading of suboptimal checkpoints)
+        # Early stopping disabled for consistency with streaming mode
         if config.patience is not None:
-            print(f"Early stopping disabled for consistency with streaming mode")
-            print(f"(Originally configured: patience={config.patience}, threshold={config.early_stopping_threshold})")     
+            print(f"Note: Early stopping disabled for consistency with streaming mode")     
         
         trainer = Trainer(
             model=self.model,
@@ -592,8 +634,8 @@ class DialogTrainer:
         )
         
         print("Starting training...")
-        print(f"Learning rate scheduler: {config.lr_scheduler_type}")
-        print(f"Warmup steps: {warmup_steps} ({warmup_steps/total_steps:.1%} of training)")
+        print(f"LR scheduler: {config.lr_scheduler_type}")
+        print(f"Warmup steps: {warmup_steps} ({warmup_steps/total_steps:.1%})")
         print(f"Total training steps: {total_steps}")
         start_time = time.time()
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)
