@@ -444,10 +444,10 @@ class DialogTrainer:
         dummy_train = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
         dummy_eval = HFDataset.from_dict({"input_ids": [[1]], "attention_mask": [[1]], "labels": [[1]]})
         
-        # Conservative evaluation settings for streaming datasets
-        if config.patience is not None:
+        # Early stopping works fine with streaming if we have evaluation
+        if eval_dataloader is None and config.patience is not None:
+            print("Note: Early stopping disabled - no evaluation dataloader available")
             config.patience = None
-            print("Note: Early stopping disabled for streaming mode due to variable dataset size")
         
         # Calculate training steps for streaming datasets
         if streaming_config.max_samples is not None:
@@ -509,6 +509,17 @@ class DialogTrainer:
         callbacks = []
         if self.wandb_run:
             callbacks.append(WandBCallback(self.wandb_run))
+        
+        # Add early stopping for streaming training (if evaluation is available)
+        if config.patience is not None and config.patience > 0 and eval_dataloader is not None:
+            early_stopping = EarlyStoppingCallback(
+                early_stopping_patience=config.patience,
+                early_stopping_threshold=config.early_stopping_threshold
+            )
+            callbacks.append(early_stopping)
+            print(f"Early stopping enabled for streaming: patience={config.patience}, threshold={config.early_stopping_threshold}")
+        elif config.patience is not None:
+            print("Early stopping skipped: no evaluation data available")
         
         # Create trainer with streaming dataloaders
         trainer = Trainer(

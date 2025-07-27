@@ -140,33 +140,33 @@
   },
   "training_configs": {
     "test": {
-      "num_epochs": 2,
+      "num_epochs": 5,
       "batch_size": 4,
       "learning_rate": 5e-04,
       "max_samples": 50,
-      "warmup_steps": 20,
-      "lr_scheduler_type": "constant_with_warmup",
+      "warmup_ratio": 0.1,
+      "lr_scheduler_type": "linear",
       "patience": null,
       "early_stopping_threshold": 0.0,
       "weight_decay": 0.01,
       "cache_memory_percent": 0.5,
-      "description": "Quick testing configuration - simple scheduler, no early stopping, 30% RAM allocation with reasonable batch size"
+      "description": "Quick testing - 5 epochs max, linear scheduler, no early stopping for debugging"
     },
     "development": {
-      "num_epochs": 2,
+      "num_epochs": 15,
       "batch_size": 4,
       "learning_rate": 3e-04,
       "max_samples": 1000,
-      "warmup_ratio": 0.05,
+      "warmup_ratio": 0.15,
       "lr_scheduler_type": "cosine",
       "patience": 3,
       "early_stopping_threshold": 0.005,
       "weight_decay": 0.01,
       "cache_memory_percent": 0.8,
-      "description": "Development training configuration - cosine scheduler with moderate patience, 10% RAM cache"
+      "description": "Development - up to 15 epochs, cosine scheduler, early stopping after 3 epochs without improvement"
     },
     "production": {
-      "num_epochs": 3,
+      "num_epochs": 25,
       "batch_size": 8,
       "learning_rate": 1e-04,
       "max_samples": null,
@@ -176,7 +176,46 @@
       "early_stopping_threshold": 0.001,
       "weight_decay": 0.01,
       "cache_memory_percent": 0.9,
-      "description": "Full production training - cosine scheduler with conservative patience, 15% RAM cache"
+      "description": "Production - up to 25 epochs, cosine scheduler, early stopping after 5 epochs without improvement"
+    },
+    "aggressive": {
+      "num_epochs": 50,
+      "batch_size": 16,
+      "learning_rate": 2e-04,
+      "max_samples": null,
+      "warmup_ratio": 0.05,
+      "lr_scheduler_type": "cosine_with_restarts",
+      "patience": 8,
+      "early_stopping_threshold": 0.0005,
+      "weight_decay": 0.02,
+      "cache_memory_percent": 0.95,
+      "description": "Aggressive - up to 50 epochs, cosine with restarts, early stopping after 8 epochs for maximum performance"
+    },
+    "fine_tune": {
+      "num_epochs": 10,
+      "batch_size": 8,
+      "learning_rate": 5e-05,
+      "max_samples": null,
+      "warmup_ratio": 0.2,
+      "lr_scheduler_type": "polynomial",
+      "patience": 3,
+      "early_stopping_threshold": 0.01,
+      "weight_decay": 0.005,
+      "cache_memory_percent": 0.8,
+      "description": "Fine-tuning - up to 10 epochs (pre-trained models converge faster), early stopping after 3 epochs"
+    },
+    "long_training": {
+      "num_epochs": 100,
+      "batch_size": 8,
+      "learning_rate": 8e-05,
+      "max_samples": null,
+      "warmup_ratio": 0.05,
+      "lr_scheduler_type": "cosine_with_restarts",
+      "patience": 10,
+      "early_stopping_threshold": 0.0001,
+      "weight_decay": 0.01,
+      "cache_memory_percent": 0.9,
+      "description": "Long training - up to 100 epochs for complex datasets, very patient early stopping (10 epochs)"
     }
   }
 }
