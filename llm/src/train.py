@@ -33,7 +33,7 @@ from config.settings import (
     list_available_models
 )
 from data.loaders import get_dataset_manager, get_database_manager
-from data.streaming import StreamingConfig, get_streaming_manager
+from data.streaming import StreamingConfig
 
 
 def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "unknown", 
@@ -88,24 +88,6 @@ def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "
         print(f"WandB setup failed: {e}")
         print("Training will continue without WandB logging")
         return None
-
-
-def apply_config_overrides(training_config, args):
-    """Apply command-line argument overrides to training configuration."""
-    if args.lr_scheduler:
-        training_config.lr_scheduler_type = args.lr_scheduler
-        print(f"Overriding LR scheduler to: {args.lr_scheduler}")
-    
-    if args.patience is not None:
-        training_config.patience = args.patience
-        print(f"Overriding patience to: {args.patience}")
-    
-    if args.no_early_stopping:
-        training_config.patience = None
-        print("Early stopping disabled via command line")
-    
-    return training_config
-
 
 def load_and_validate_configs(model_name: str, config_type: str, max_samples: Optional[int] = None):
     """Load and validate model and training configurations."""
@@ -226,11 +208,7 @@ def execute_streaming_training(trainer, streaming_config, training_config, resum
     
     trainer_obj = trainer.train_streaming(
         streaming_config=streaming_config,
-        num_epochs=training_config.num_epochs,
-        batch_size=training_config.batch_size,
-        learning_rate=training_config.learning_rate,
-        save_steps=training_config.save_steps,
-        eval_steps=training_config.eval_steps,
+        training_config=training_config,
         resume_from_checkpoint=resume_from_checkpoint
     )
     
@@ -278,11 +256,7 @@ def execute_training(trainer, train_dataset, eval_dataset, training_config, resu
     trainer_obj = trainer.train(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        num_epochs=training_config.num_epochs,
-        batch_size=training_config.batch_size,
-        learning_rate=training_config.learning_rate,
-        save_steps=training_config.save_steps,
-        eval_steps=training_config.eval_steps,
+        training_config=training_config,
         resume_from_checkpoint=resume_from_checkpoint
     )
     

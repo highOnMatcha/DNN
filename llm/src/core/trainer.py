@@ -19,12 +19,13 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers.training_args import TrainingArguments
 from transformers.trainer import Trainer
 from transformers.data.data_collator import DataCollatorForLanguageModeling
-from transformers.trainer_callback import TrainerCallback
+from transformers.trainer_callback import TrainerCallback, EarlyStoppingCallback
 
 # Add imports for streaming support
 current_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(current_dir))
 from data.streaming import StreamingConfig, get_streaming_manager
+from .models import create_custom_model
 
 
 class WandBCallback(TrainerCallback):
@@ -194,12 +195,6 @@ class DialogTrainer:
                 
                 # For custom models, we need to create the model architecture first
                 # and then load the weights, since HuggingFace doesn't recognize our custom type
-                try:
-                    from .models import create_custom_model
-                except ImportError:
-                    from core.models import create_custom_model
-                    
-                # Create the model architecture using our custom config
                 self.model = create_custom_model(self.config)
                 
                 # Load the trained weights
@@ -230,10 +225,6 @@ class DialogTrainer:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
-        try:
-            from .models import create_custom_model
-        except ImportError:
-            from core.models import create_custom_model
         self.model = create_custom_model(self.config)
         self.model.to(self.device)
     
@@ -328,6 +319,7 @@ class DialogTrainer:
         return train_dataset, eval_dataset
     
     def train_streaming(self, streaming_config: Optional[StreamingConfig] = None,
+                       training_config: Optional[Any] = None,
                        num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,
                        save_steps: int = 500, eval_steps: int = 500, 
                        resume_from_checkpoint: Optional[str] = None) -> Trainer:
@@ -339,33 +331,41 @@ class DialogTrainer:
         
         Args:
             streaming_config: Configuration for streaming behavior.
-            num_epochs: Number of training epochs.
-            batch_size: Batch size for training and evaluation.
-            learning_rate: Learning rate for optimization.
-            save_steps: Frequency of model checkpointing.
-            eval_steps: Frequency of evaluation during training.
+            training_config: Training configuration object with all training parameters.
+                           If provided, takes precedence over individual parameters.
+            num_epochs: Number of training epochs (used if training_config is None).
+            batch_size: Batch size for training and evaluation (used if training_config is None).
+            learning_rate: Learning rate for optimization (used if training_config is None).
+            save_steps: Frequency of model checkpointing (used if training_config is None).
+            eval_steps: Frequency of evaluation during training (used if training_config is None).
             resume_from_checkpoint: Path to checkpoint to resume training from.
         
         Returns:
             Trained Trainer object.
         """
-        # Get training config for enhanced settings
-        from config.settings import get_test_config, get_development_config, get_production_config
-        
-        # Determine config type from epochs (simple heuristic)
-        if num_epochs == 1:
-            config = get_test_config()
-        elif num_epochs == 2:
-            config = get_development_config()
+        # Use provided training config or create from individual parameters
+        if training_config is not None:
+            config = training_config
+            # Use values from training_config
+            num_epochs = config.num_epochs
+            batch_size = config.batch_size
+            learning_rate = config.learning_rate
+            save_steps = config.save_steps
+            eval_steps = config.eval_steps
         else:
+            # Fall back to default config for missing parameters
+            try:
+                from ..config.settings import get_production_config
+            except ImportError:
+                from config.settings import get_production_config
+            
             config = get_production_config()
-        
-        # Override with current parameters
-        config.num_epochs = num_epochs
-        config.batch_size = batch_size
-        config.learning_rate = learning_rate
-        config.save_steps = save_steps
-        config.eval_steps = eval_steps
+            # Override with provided parameters
+            config.num_epochs = num_epochs
+            config.batch_size = batch_size
+            config.learning_rate = learning_rate
+            config.save_steps = save_steps
+            config.eval_steps = eval_steps
         
         if streaming_config is None:
             streaming_config = StreamingConfig(
@@ -431,7 +431,7 @@ class DialogTrainer:
         # Conservative evaluation settings for streaming datasets
         if config.patience is not None:
             config.patience = None
-            print("Early stopping disabled for streaming mode due to variable dataset size")
+            print("Note: Early stopping disabled for streaming mode due to variable dataset size")
         
         # Calculate training steps for streaming datasets
         if streaming_config.max_samples is not None:
@@ -490,7 +490,9 @@ class DialogTrainer:
         )
         
         # Setup callbacks for streaming
-        callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
+        callbacks = []
+        if self.wandb_run:
+            callbacks.append(WandBCallback(self.wandb_run))
         
         # Create trainer with streaming dataloaders
         trainer = Trainer(
@@ -533,6 +535,7 @@ class DialogTrainer:
         return trainer
     
     def train(self, train_dataset: HFDataset, eval_dataset: HFDataset, 
+              training_config: Optional[Any] = None,
               num_epochs: int = 3, batch_size: int = 4, learning_rate: float = 5e-5,
               save_steps: int = 500, eval_steps: int = 500, 
               resume_from_checkpoint: Optional[str] = None) -> Trainer:
@@ -542,11 +545,13 @@ class DialogTrainer:
         Args:
             train_dataset: Tokenized training dataset.
             eval_dataset: Tokenized evaluation dataset.
-            num_epochs: Number of training epochs.
-            batch_size: Batch size for training and evaluation.
-            learning_rate: Learning rate for optimization.
-            save_steps: Frequency of model checkpointing.
-            eval_steps: Frequency of evaluation during training.
+            training_config: Training configuration object with all training parameters.
+                           If provided, takes precedence over individual parameters.
+            num_epochs: Number of training epochs (used if training_config is None).
+            batch_size: Batch size for training and evaluation (used if training_config is None).
+            learning_rate: Learning rate for optimization (used if training_config is None).
+            save_steps: Frequency of model checkpointing (used if training_config is None).
+            eval_steps: Frequency of evaluation during training (used if training_config is None).
             resume_from_checkpoint: Path to checkpoint to resume training from.
         
         Returns:
@@ -562,23 +567,29 @@ class DialogTrainer:
             }
             self.wandb_run.config.update(training_params)
         
-        # Get training config for enhanced settings
-        from config.settings import get_test_config, get_development_config, get_production_config
-        
-        # Determine config type from epochs (simple heuristic)
-        if num_epochs == 1:
-            config = get_test_config()
-        elif num_epochs == 2:
-            config = get_development_config()
+        # Use provided training config or create from individual parameters
+        if training_config is not None:
+            config = training_config
+            # Use values from training_config
+            num_epochs = config.num_epochs
+            batch_size = config.batch_size
+            learning_rate = config.learning_rate
+            save_steps = config.save_steps
+            eval_steps = config.eval_steps
         else:
+            # Fall back to default config for missing parameters
+            try:
+                from ..config.settings import get_production_config
+            except ImportError:
+                from config.settings import get_production_config
+            
             config = get_production_config()
-        
-        # Override with current parameters
-        config.num_epochs = num_epochs
-        config.batch_size = batch_size
-        config.learning_rate = learning_rate
-        config.save_steps = save_steps
-        config.eval_steps = eval_steps
+            # Override with provided parameters
+            config.num_epochs = num_epochs
+            config.batch_size = batch_size
+            config.learning_rate = learning_rate
+            config.save_steps = save_steps
+            config.eval_steps = eval_steps
         
         # Calculate warmup steps
         total_steps = (len(train_dataset) // batch_size) * num_epochs
@@ -618,11 +629,18 @@ class DialogTrainer:
         )
         
         # Setup callbacks
-        callbacks = [WandBCallback(self.wandb_run)] if self.wandb_run else []
+        callbacks = []
+        if self.wandb_run:
+            callbacks.append(WandBCallback(self.wandb_run))
         
-        # Early stopping disabled for consistency with streaming mode
-        if config.patience is not None:
-            print(f"Note: Early stopping disabled for consistency with streaming mode")     
+        # Add early stopping for regular training (not streaming)
+        if config.patience is not None and config.patience > 0:
+            early_stopping = EarlyStoppingCallback(
+                early_stopping_patience=config.patience,
+                early_stopping_threshold=config.early_stopping_threshold
+            )
+            callbacks.append(early_stopping)
+            print(f"Early stopping enabled: patience={config.patience}, threshold={config.early_stopping_threshold}")     
         
         trainer = Trainer(
             model=self.model,
@@ -657,6 +675,9 @@ class DialogTrainer:
         return trainer
     
     def generate_response(self, instruction: str, max_length: int = 150, 
+                         temperature: float = 0.7, top_k: int = 50, top_p: float = 0.9,
+                         do_sample: bool = True, num_beams: int = 1, repetition_penalty: float = 1.0,
+                         length_penalty: float = 1.0, early_stopping: bool = False,
                          log_to_wandb: bool = False) -> str:
         """
         Generate response for given instruction using the trained model.
@@ -667,6 +688,14 @@ class DialogTrainer:
         Args:
             instruction: Input instruction or question for the model.
             max_length: Maximum length of the generated response.
+            temperature: Controls randomness in generation (0.0 = deterministic, 1.0+ = more random).
+            top_k: Number of highest probability vocabulary tokens to keep for sampling.
+            top_p: Cumulative probability threshold for nucleus sampling.
+            do_sample: Whether to use sampling instead of greedy decoding.
+            num_beams: Number of beams for beam search (1 = no beam search).
+            repetition_penalty: Penalty for repeating tokens (1.0 = no penalty).
+            length_penalty: Penalty for sequence length in beam search.
+            early_stopping: Whether to stop beam search when first num_beams sentences are finished.
             log_to_wandb: Whether to log generation metrics to WandB.
         
         Returns:
@@ -681,35 +710,67 @@ class DialogTrainer:
         start_time = time.time()
         inputs = self.tokenizer.encode(input_text, return_tensors="pt").to(self.device)
         
+        # Prepare generation arguments
+        generation_kwargs = {
+            "max_length": len(inputs[0]) + max_length,
+            "temperature": temperature,
+            "do_sample": do_sample,
+            "repetition_penalty": repetition_penalty,
+            "pad_token_id": self.tokenizer.eos_token_id
+        }
+        
+        # Add sampling parameters only if sampling is enabled
+        if do_sample:
+            generation_kwargs.update({
+                "top_k": top_k,
+                "top_p": top_p
+            })
+        
+        # Add beam search parameters only if using beam search
+        if num_beams > 1:
+            generation_kwargs.update({
+                "num_beams": num_beams,
+                "length_penalty": length_penalty,
+                "early_stopping": early_stopping
+            })
+            # Disable sampling for beam search
+            generation_kwargs["do_sample"] = False
+        
         with torch.no_grad():
             if self.config.from_scratch and hasattr(self.model, 'generate'):
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=len(inputs[0]) + max_length,
-                    temperature=0.7,
-                    top_k=50
-                )
+                # For custom models, use only supported parameters
+                custom_kwargs = {
+                    "max_length": generation_kwargs["max_length"],
+                    "temperature": generation_kwargs["temperature"]
+                }
+                if do_sample:
+                    custom_kwargs["top_k"] = top_k
+                
+                outputs = self.model.generate(inputs, **custom_kwargs)
             else:
-                # For pre-trained models, use transformers generate method
-                outputs = self.model.generate(
-                    inputs,
-                    max_length=len(inputs[0]) + max_length,
-                    temperature=0.7,
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id
-                )
+                # For pre-trained models, use all generation parameters
+                outputs = self.model.generate(inputs, **generation_kwargs)
         
         generation_time = time.time() - start_time
         full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         response = full_response[len(input_text):].strip()
         
         if log_to_wandb and self.wandb_run:
-            self.wandb_run.log({
+            generation_metrics = {
                 "generation/time_seconds": generation_time,
                 "generation/response_length": len(response),
                 "generation/response_words": len(response.split()),
                 "generation/input_length": len(instruction),
                 "generation/tokens_generated": len(outputs[0]) - len(inputs[0]),
-            })
+                "generation/temperature": temperature,
+                "generation/top_k": top_k,
+                "generation/top_p": top_p,
+                "generation/do_sample": do_sample,
+                "generation/num_beams": num_beams,
+                "generation/repetition_penalty": repetition_penalty,
+                "generation/length_penalty": length_penalty,
+                "generation/early_stopping": early_stopping,
+            }
+            self.wandb_run.log(generation_metrics)
         
         return response

@@ -11,10 +11,32 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
+from pathlib import Path
 
 
 # Path to external model configurations
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "model_configs.json")
+
+
+def get_models_root_dir() -> str:
+    """
+    Get the absolute path to the llm/models directory.
+    
+    This ensures all models are stored and loaded from the same location
+    regardless of where the script is executed from.
+    
+    Returns:
+        Absolute path to the llm/models directory.
+    """
+    # Get the path to this file (llm/src/config/settings.py)
+    current_file = Path(__file__).resolve()
+    # Go up to llm directory: llm/src/config -> llm/src -> llm
+    llm_root = current_file.parent.parent.parent
+    # Create models directory path
+    models_dir = llm_root / "models"
+    # Ensure the directory exists
+    models_dir.mkdir(exist_ok=True)
+    return str(models_dir)
 
 
 def load_model_configs() -> Dict[str, Any]:
@@ -285,9 +307,25 @@ def get_model_config(model_type: str = "gpt2-small") -> ModelConfig:
         raise ValueError(f"Model type '{model_type}' not available. Choose from: {available}")
     
     model_info = MODEL_OPTIONS[model_type]
+    
+    # Convert relative output_dir to absolute path in llm/models
+    relative_output_dir = model_info["output_dir"]
+    if relative_output_dir.startswith("./src/models/"):
+        # Extract just the model folder name
+        model_folder = relative_output_dir.replace("./src/models/", "")
+        absolute_output_dir = os.path.join(get_models_root_dir(), model_folder)
+    elif relative_output_dir.startswith("./models/"):
+        # Handle legacy format
+        model_folder = relative_output_dir.replace("./models/", "")
+        absolute_output_dir = os.path.join(get_models_root_dir(), model_folder)
+    else:
+        # Fallback for other formats
+        model_folder = os.path.basename(relative_output_dir)
+        absolute_output_dir = os.path.join(get_models_root_dir(), model_folder)
+    
     config = ModelConfig(
         name=model_info["name"],
-        output_dir=model_info["output_dir"],
+        output_dir=absolute_output_dir,
         from_scratch=model_info.get("from_scratch", False)
     )
     
