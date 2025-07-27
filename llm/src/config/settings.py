@@ -79,6 +79,15 @@ class ModelConfig:
         output_dir: Directory where trained model and checkpoints will be saved.
         max_sequence_length: Maximum sequence length for input processing.
         from_scratch: Whether to build model from scratch or use pre-trained.
+        tokenizer_name: Tokenizer to use for custom models. Options:
+            - "gpt2": Classic GPT-2 tokenizer (50,257 vocab, byte-level BPE)
+            - "microsoft/DialoGPT-medium": Better for dialogue tasks
+            - "EleutherAI/gpt-neox-20b": More efficient, modern tokenizer (50,432 vocab)
+            - "facebook/opt-350m": Meta's OPT tokenizer, good performance
+            - "bigscience/bloom-560m": Multilingual support, efficient encoding
+            - "mistralai/Mistral-7B-v0.1": Modern, efficient tokenizer for instruction tasks
+            - "TinyLlama/TinyLlama-1.1B-Chat-v1.0": Optimized for small models
+            Note: For custom models, ensure vocab_size matches tokenizer vocabulary size!
         vocab_size: Vocabulary size for custom models.
         n_embd: Embedding dimension for transformer layers.
         n_layer: Number of transformer layers.
@@ -89,6 +98,7 @@ class ModelConfig:
     output_dir: str = "./trained_model"
     max_sequence_length: int = 512
     from_scratch: bool = False  # Whether to build from scratch or use pre-trained
+    tokenizer_name: Optional[str] = None  # If None, uses 'name' for pre-trained or 'gpt2' for custom
     
     # Architecture parameters for custom models
     vocab_size: int = 50257  # GPT-2 vocab size

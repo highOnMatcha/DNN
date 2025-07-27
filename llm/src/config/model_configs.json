@@ -37,6 +37,7 @@
       "description": "Custom GPT model from scratch (50M parameters)",
       "output_dir": "./src/models/custom_small",
       "from_scratch": true,
+      "tokenizer_name": "gpt2",
       "architecture": {
         "n_embd": 512,
         "n_layer": 8,
@@ -51,6 +52,7 @@
       "description": "Custom GPT model from scratch (100M parameters)",
       "output_dir": "./src/models/custom_medium",
       "from_scratch": true,
+      "tokenizer_name": "gpt2",
       "architecture": {
         "n_embd": 768,
         "n_layer": 12,
@@ -65,6 +67,7 @@
       "description": "Custom GPT model from scratch (200M parameters)",
       "output_dir": "./src/models/custom_large",
       "from_scratch": true,
+      "tokenizer_name": "gpt2",
       "architecture": {
         "n_embd": 1024,
         "n_layer": 16,
@@ -79,6 +82,7 @@
       "description": "Tiny custom model for testing (10M parameters)",
       "output_dir": "./src/models/custom_tiny",
       "from_scratch": true,
+      "tokenizer_name": "gpt2",
       "architecture": {
         "n_embd": 256,
         "n_layer": 4,
@@ -93,11 +97,42 @@
       "description": "Ultra-tiny model for rapid testing (5M parameters)",
       "output_dir": "./src/models/custom_nano",
       "from_scratch": true,
+      "tokenizer_name": "gpt2",
       "architecture": {
         "n_embd": 128,
         "n_layer": 3,
         "n_head": 4,
         "vocab_size": 50257,
+        "max_sequence_length": 512,
+        "dropout": 0.1
+      }
+    },
+    "custom-small-dialogue": {
+      "name": "custom-gpt-small-dialogue",
+      "description": "Custom small model optimized for dialogue (50M parameters, DialoGPT tokenizer)",
+      "output_dir": "./src/models/custom_small_dialogue",
+      "from_scratch": true,
+      "tokenizer_name": "microsoft/DialoGPT-medium",
+      "architecture": {
+        "n_embd": 512,
+        "n_layer": 8,
+        "n_head": 8,
+        "vocab_size": 50257,
+        "max_sequence_length": 512,
+        "dropout": 0.1
+      }
+    },
+    "custom-small-modern": {
+      "name": "custom-gpt-small-modern",
+      "description": "Custom small model with modern efficient tokenizer (50M parameters, Mistral tokenizer)",
+      "output_dir": "./src/models/custom_small_modern",
+      "from_scratch": true,
+      "tokenizer_name": "mistralai/Mistral-7B-v0.1",
+      "architecture": {
+        "n_embd": 512,
+        "n_layer": 8,
+        "n_head": 8,
+        "vocab_size": 32000,
         "max_sequence_length": 512,
         "dropout": 0.1
       }

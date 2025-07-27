@@ -160,7 +160,12 @@ class DialogTrainer:
         print(f"Loading model: {self.config.name}")
         print(f"Output: {self.config.output_dir}")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config.name)
+        # Use configurable tokenizer or default to model name
+        tokenizer_name = self.config.tokenizer_name or self.config.name
+        if tokenizer_name != self.config.name:
+            print(f"Using custom tokenizer: {tokenizer_name}")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
@@ -221,9 +226,20 @@ class DialogTrainer:
         # Fallback: Create new model from scratch
         print(f"Building new model from scratch")
         
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        # Use configurable tokenizer for custom models
+        tokenizer_name = self.config.tokenizer_name or "gpt2"
+        print(f"Using tokenizer: {tokenizer_name}")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Verify vocab size matches model config
+        actual_vocab_size = len(self.tokenizer)
+        if actual_vocab_size != self.config.vocab_size:
+            print(f"Warning: Tokenizer vocab size ({actual_vocab_size}) doesn't match config ({self.config.vocab_size})")
+            print(f"Updating model config to match tokenizer...")
+            self.config.vocab_size = actual_vocab_size
         
         self.model = create_custom_model(self.config)
         self.model.to(self.device)
