@@ -67,7 +67,7 @@
       "description": "Custom GPT model from scratch (200M parameters)",
       "output_dir": "./src/models/custom_large",
       "from_scratch": true,
-      "tokenizer_name": "gpt2",
+      "tokenizer_name": "microsoft/DialoGPT-medium",
       "architecture": {
         "n_embd": 1024,
         "n_layer": 16,
