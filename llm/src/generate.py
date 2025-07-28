@@ -20,6 +20,7 @@ sys.path.insert(0, str(current_dir))
 try:
     from core.trainer import DialogTrainer
     from config.settings import get_model_config, list_available_models
+    from core.logging_config import initialize_project_logging, get_logger
 except ImportError as e:
     print("Error: Could not import LLM modules.")
     print(f"Import error: {e}")
@@ -27,33 +28,39 @@ except ImportError as e:
     print("  pip install -r requirements.txt")
     sys.exit(1)
 
+# Initialize module logger
+logger = get_logger(__name__)
+
 
 def generate_text(args) -> None:
     """Generate text using a trained model."""
+    # Initialize logging for generation
+    initialize_project_logging(log_level="INFO")
+    
     try:
         if args.model_path:
-            print(f"Loading model from: {args.model_path}")
-            print("Note: Loading from custom checkpoint paths not yet fully implemented")
-            print("Using default model configuration for now")
+            logger.info(f"Loading model from: {args.model_path}")
+            logger.warning("Loading from custom checkpoint paths not yet fully implemented")
+            logger.info("Using default model configuration for now")
             model_config = get_model_config("custom-tiny")
         else:
             model_config = get_model_config(args.model)
-            print(f"Using model: {model_config.name}")
+            logger.info(f"Using model: {model_config.name}")
         
         trainer = DialogTrainer(model_config=model_config)
         
-        print(f"\nInstruction: {args.instruction}")
-        print("=" * 50)
+        logger.info(f"Instruction: {args.instruction}")
+        logger.info("=" * 50)
         
         response = trainer.generate_response(
             args.instruction, 
             max_length=args.max_length
         )
         
-        print(f"Response: {response}")
+        logger.info(f"Response: {response}")
         
     except Exception as e:
-        print(f"Error generating text: {e}")
+        logger.error(f"Error generating text: {e}", exc_info=True)
         sys.exit(1)
 
 

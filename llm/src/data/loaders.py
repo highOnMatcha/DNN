@@ -13,6 +13,16 @@ from typing import Optional, Dict, Any, Literal
 import pandas as pd
 from sqlalchemy import create_engine, text
 
+# Import logging
+import sys
+from pathlib import Path
+current_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(current_dir))
+from core.logging_config import get_logger
+
+# Initialize module logger
+logger = get_logger(__name__)
+
 
 class DatasetManager:
     """
@@ -115,10 +125,10 @@ class DatasetManager:
         # Save to disk only if explicitly requested (deprecated)
         if save_to_disk:
             df.to_csv(self.dataset_file, index=False)
-            print(f"Dataset also saved to disk: {self.dataset_file}")
-            print("Note: CSV storage is deprecated, use database for streaming")
+            logger.info(f"Dataset also saved to disk: {self.dataset_file}")
+            logger.warning("CSV storage is deprecated, use database for streaming")
         else:
-            print("Dataset loaded in memory only (recommended for streaming workflows)")
+            logger.info("Dataset loaded in memory only (recommended for streaming workflows)")
         
         return df
     

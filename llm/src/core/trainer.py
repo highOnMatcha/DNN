@@ -27,6 +27,12 @@ sys.path.insert(0, str(current_dir))
 from data.streaming import StreamingConfig, get_streaming_manager
 from .models import create_custom_model
 
+# Import logging
+from .logging_config import get_logger, log_model_info, TrainingProgressLogger
+
+# Initialize module logger
+logger = get_logger(__name__)
+
 
 class WandBCallback(TrainerCallback):
     """
@@ -216,19 +222,19 @@ class DialogTrainer:
                 # Load the state dict into our model
                 self.model.load_state_dict(state_dict)
                 self.model.to(self.device)
-                print(f"Successfully loaded trained custom model from {output_path}")
+                logger.info(f"Successfully loaded trained custom model from {output_path}")
                 return
                 
             except Exception as e:
-                print(f"Warning: Failed to load trained model: {e}")
-                print("Falling back to creating new model...")
+                logger.warning(f"Failed to load trained model: {e}")
+                logger.info("Falling back to creating new model...")
         
         # Fallback: Create new model from scratch
-        print(f"Building new model from scratch")
+        logger.info(f"Building new model from scratch")
         
         # Use configurable tokenizer for custom models
         tokenizer_name = self.config.tokenizer_name or "gpt2"
-        print(f"Using tokenizer: {tokenizer_name}")
+        logger.info(f"Using tokenizer: {tokenizer_name}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         if self.tokenizer.pad_token is None:
@@ -237,8 +243,8 @@ class DialogTrainer:
         # Verify vocab size matches model config
         actual_vocab_size = len(self.tokenizer)
         if actual_vocab_size != self.config.vocab_size:
-            print(f"Warning: Tokenizer vocab size ({actual_vocab_size}) doesn't match config ({self.config.vocab_size})")
-            print(f"Updating model config to match tokenizer...")
+            logger.warning(f"Tokenizer vocab size ({actual_vocab_size}) doesn't match config ({self.config.vocab_size})")
+            logger.info(f"Updating model config to match tokenizer...")
             self.config.vocab_size = actual_vocab_size
         
         self.model = create_custom_model(self.config)

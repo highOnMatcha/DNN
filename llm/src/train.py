@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Single model training pipeline with WandB integration.
+Single model training pipeline with comprehensive logging and WandB integration.
 
 This module provides a comprehensive training pipeline for dialog models with
 experiment tracking, model evaluation, and generation testing capabilities.
@@ -24,6 +24,9 @@ import torch
 import wandb
 from dotenv import load_dotenv
 
+# Import logging configuration
+from core.logging_config import initialize_project_logging, get_logger, log_system_info, TrainingProgressLogger
+
 from core.trainer import DialogTrainer
 from config.settings import (
     get_model_config, 
@@ -34,6 +37,9 @@ from config.settings import (
 )
 from data.loaders import get_dataset_manager, get_database_manager
 from data.streaming import StreamingConfig
+
+# Initialize module logger
+logger = get_logger(__name__)
 
 
 def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "unknown", 
@@ -57,14 +63,14 @@ def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "
     wandb_api_key = os.getenv('WANDB_API_KEY')
     
     if not wandb_api_key:
-        print("Warning: No WANDB_API_KEY found in environment")
-        print("Set WANDB_API_KEY in environment or .env file")
-        print("Training will continue without WandB logging")
+        logger.warning("No WANDB_API_KEY found in environment")
+        logger.info("Set WANDB_API_KEY in environment or .env file")
+        logger.info("Training will continue without WandB logging")
         return None
     
     try:
         wandb.login(key=wandb_api_key)
-        print("WandB authentication successful")
+        logger.info("WandB authentication successful")
         
         run_name = f"{model_name}-{config_type}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         
@@ -81,17 +87,17 @@ def setup_wandb(project_name: str = "dialog-model-training", model_name: str = "
             }
         )
         
-        print(f"WandB run initialized: {run_name}")
+        logger.info(f"WandB run initialized: {run_name}")
         return wandb_run
         
     except Exception as e:
-        print(f"WandB setup failed: {e}")
-        print("Training will continue without WandB logging")
+        logger.error(f"WandB setup failed: {e}")
+        logger.info("Training will continue without WandB logging")
         return None
 
 def load_and_validate_configs(model_name: str, config_type: str, max_samples: Optional[int] = None):
     """Load and validate model and training configurations."""
-    print("1. Loading configurations...")
+    logger.info("Loading configurations...")
     model_config = get_model_config(model_name)
     
     if config_type == "test":
@@ -106,31 +112,30 @@ def load_and_validate_configs(model_name: str, config_type: str, max_samples: Op
     if max_samples is not None:
         training_config.max_samples = max_samples
     
-    print(f"Model config: {model_config.name}")
-    print(f"Training config: {config_type}")
-    print(f"  - Epochs: {training_config.num_epochs}")
-    print(f"  - Batch size: {training_config.batch_size}")
-    print(f"  - Learning rate: {training_config.learning_rate}")
-    print(f"  - LR scheduler: {training_config.lr_scheduler_type}")
+    logger.info(f"Model config: {model_config.name}")
+    logger.info(f"Training config: {config_type}")
+    logger.info(f"  - Epochs: {training_config.num_epochs}")
+    logger.info(f"  - Batch size: {training_config.batch_size}")
+    logger.info(f"  - Learning rate: {training_config.learning_rate}")
+    logger.info(f"  - LR scheduler: {training_config.lr_scheduler_type}")
     if training_config.warmup_ratio:
-        print(f"  - Warmup ratio: {training_config.warmup_ratio:.1%}")
+        logger.info(f"  - Warmup ratio: {training_config.warmup_ratio:.1%}")
     else:
-        print(f"  - Warmup steps: {training_config.warmup_steps}")
-    print(f"  - Weight decay: {training_config.weight_decay}")
+        logger.info(f"  - Warmup steps: {training_config.warmup_steps}")
+    logger.info(f"  - Weight decay: {training_config.weight_decay}")
     if training_config.patience:
-        print(f"  - Early stopping patience: {training_config.patience}")
-        print(f"  - Early stopping threshold: {training_config.early_stopping_threshold}")
+        logger.info(f"  - Early stopping patience: {training_config.patience}")
+        logger.info(f"  - Early stopping threshold: {training_config.early_stopping_threshold}")
     else:
-        print("  - Early stopping: Disabled")
-    print(f"  - Max samples: {training_config.max_samples or 'All'}")
-    print()
+        logger.info("  - Early stopping: Disabled")
+    logger.info(f"  - Max samples: {training_config.max_samples or 'All'}")
     
     return model_config, training_config
 
 
 def load_and_prepare_dataset(training_config):
     """Load dataset and prepare train/eval splits, prioritizing database sources."""
-    print("2. Loading dataset...")
+    logger.info("Loading dataset...")
     dataset_manager = get_dataset_manager()
     
     # Use the new loading method that prioritizes database with shuffling
@@ -141,9 +146,8 @@ def load_and_prepare_dataset(training_config):
         shuffle_database=True  # Enable random shuffling for better training diversity
     )
     
-    print(f"Dataset loaded: {len(df)} total samples")
+    logger.info(f"Dataset loaded: {len(df)} total samples")
     dataset_manager.print_dataset_summary(df)
-    print()
     
     return df
 
@@ -154,13 +158,13 @@ def check_database_availability() -> bool:
         db_manager = get_database_manager()
         df = db_manager.load_from_database(shuffle=False)  # No shuffling for availability check
         if df is not None and len(df) > 0:
-            print(f"Database available with {len(df)} rows")
+            logger.info(f"Database available with {len(df)} rows")
             return True
         else:
-            print("Database is available but contains no data")
+            logger.warning("Database is available but contains no data")
             return False
     except Exception as e:
-        print(f"Database not available: {e}")
+        logger.warning(f"Database not available: {e}")
         return False
 
 
@@ -176,11 +180,11 @@ def check_streaming_availability() -> bool:
 
 def prepare_streaming_datasets(trainer, training_config):
     """Prepare streaming datasets for large data training."""
-    print("4. Preparing streaming datasets...")
+    logger.info("Preparing streaming datasets...")
     
     # Check streaming availability
     if not check_streaming_availability():
-        print("Warning: Database not available for streaming")
+        logger.warning("Database not available for streaming")
     
     # Create streaming config based on training config
     streaming_config = StreamingConfig(
@@ -194,8 +198,7 @@ def prepare_streaming_datasets(trainer, training_config):
         streaming_config=streaming_config
     )
     
-    print("Streaming datasets prepared")
-    print()
+    logger.info("Streaming datasets prepared")
     
     return train_dataset, eval_dataset, streaming_config
 
@@ -358,20 +361,29 @@ def train_single_model(
     resume_from_checkpoint: Optional[str] = None
 ) -> Tuple[Any, Dict[str, float]]:
     """Train a single model with comprehensive logging and evaluation."""
-    print("=" * 60)
-    print("SINGLE MODEL TRAINING PIPELINE")
-    print("=" * 60)
-    print(f"Model: {model_name}")
-    print(f"Configuration: {config_type}")
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print()
+    
+    # Initialize project-wide logging
+    project_logger = initialize_project_logging(
+        log_level="INFO",
+        model_name=model_name,
+        config_type=config_type
+    )
+    
+    logger.info("=" * 60)
+    logger.info("SINGLE MODEL TRAINING PIPELINE")
+    logger.info("=" * 60)
+    logger.info(f"Model: {model_name}")
+    logger.info(f"Configuration: {config_type}")
+    logger.info(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
+    logger.info(f"Device: {device}")
     if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name()}")
-        print(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-    print()
+        logger.info(f"GPU: {torch.cuda.get_device_name()}")
+        logger.info(f"Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    
+    # Log comprehensive system information
+    log_system_info(logger)
     
     wandb_run = setup_wandb(project_name, model_name, config_type)
     
@@ -404,21 +416,20 @@ def train_single_model(
                 "experiment/completion_timestamp": datetime.now().isoformat(),
             })
         
-        print("=" * 60)
-        print("TRAINING PIPELINE COMPLETED SUCCESSFULLY")
-        print("=" * 60)
-        print(f"Model: {model_name}")
-        print(f"Output directory: {model_config.output_dir}")
-        print(f"Training duration: {training_duration/60:.1f} minutes")
+        logger.info("=" * 60)
+        logger.info("TRAINING PIPELINE COMPLETED SUCCESSFULLY")
+        logger.info("=" * 60)
+        logger.info(f"Model: {model_name}")
+        logger.info(f"Output directory: {model_config.output_dir}")
+        logger.info(f"Training duration: {training_duration/60:.1f} minutes")
         if wandb_run:
-            print(f"WandB run: {wandb_run.name}")
-            print(f"WandB URL: {wandb_run.url}")
-        print()
+            logger.info(f"WandB run: {wandb_run.name}")
+            logger.info(f"WandB URL: {wandb_run.url}")
         
         return trainer, generation_metrics
         
     except Exception as e:
-        print(f"Training failed: {e}")
+        logger.error(f"Training failed: {e}", exc_info=True)
         if wandb_run:
             wandb_run.log({
                 "experiment/status": "failed",
@@ -429,7 +440,7 @@ def train_single_model(
     finally:
         if wandb_run:
             wandb_run.finish()
-            print("WandB run completed")
+            logger.info("WandB run completed")
 
 
 def train_single_model_streaming(
