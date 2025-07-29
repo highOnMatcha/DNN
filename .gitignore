@@ -18,6 +18,13 @@ sdist/
 var/
 wheels/
 export/
+logs/
+results/
+
+llm/data 
+time_series/data
+
+
 
 # Data files
 *.csv
@@ -53,7 +60,8 @@ Thumbs.db
 *.log
 
 # ML/AI specific
-models/
+llm/models/
+time_series/models
 outputs/
 checkpoints/
 wandb/

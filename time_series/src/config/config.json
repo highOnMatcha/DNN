@@ -1,0 +1,176 @@
+{
+  "model_configs": {
+    "lstm-tiny": {
+      "model_type": "lstm",
+      "input_size": 5,
+      "hidden_size": 32,
+      "num_layers": 1,
+      "dropout": 0.1,
+      "bidirectional": false,
+      "output_size": 1,
+      "use_attention": false
+    },
+    "lstm-small": {
+      "model_type": "lstm",
+      "input_size": 5,
+      "hidden_size": 64,
+      "num_layers": 2,
+      "dropout": 0.2,
+      "bidirectional": false,
+      "output_size": 1,
+      "use_attention": false
+    },
+    "lstm-medium": {
+      "model_type": "lstm",
+      "input_size": 10,
+      "hidden_size": 128,
+      "num_layers": 3,
+      "dropout": 0.3,
+      "bidirectional": false,
+      "output_size": 1,
+      "use_attention": false
+    },
+    "lstm-large": {
+      "model_type": "lstm",
+      "input_size": 15,
+      "hidden_size": 256,
+      "num_layers": 4,
+      "dropout": 0.3,
+      "bidirectional": true,
+      "output_size": 1,
+      "use_attention": false
+    },
+    "lstm-attention": {
+      "model_type": "lstm",
+      "input_size": 10,
+      "hidden_size": 128,
+      "num_layers": 2,
+      "dropout": 0.2,
+      "bidirectional": false,
+      "output_size": 1,
+      "use_attention": true
+    }
+  },
+  "training_configs": {
+    "test": {
+      "batch_size": 32,
+      "learning_rate": 0.01,
+      "num_epochs": 5,
+      "weight_decay": 0.0001,
+      "scheduler_type": "step",
+      "scheduler_params": {
+        "step_size": 2,
+        "gamma": 0.9
+      },
+      "early_stopping_patience": 3,
+      "gradient_clip_norm": 1.0,
+      "validation_split": 0.2,
+      "save_every_n_epochs": 2
+    },
+    "development": {
+      "batch_size": 64,
+      "learning_rate": 0.001,
+      "num_epochs": 50,
+      "weight_decay": 0.0001,
+      "scheduler_type": "cosine",
+      "scheduler_params": {
+        "T_max": 50,
+        "eta_min": 0.000001
+      },
+      "early_stopping_patience": 10,
+      "gradient_clip_norm": 1.0,
+      "validation_split": 0.2,
+      "save_every_n_epochs": 10
+    },
+    "production": {
+      "batch_size": 128,
+      "learning_rate": 0.0005,
+      "num_epochs": 200,
+      "weight_decay": 0.00001,
+      "scheduler_type": "cosine_warm_restart",
+      "scheduler_params": {
+        "T_0": 20,
+        "T_mult": 2,
+        "eta_min": 0.0000001
+      },
+      "early_stopping_patience": 20,
+      "gradient_clip_norm": 0.5,
+      "validation_split": 0.15,
+      "save_every_n_epochs": 25
+    }
+  },
+  "data_configs": {
+    "basic": {
+      "sequence_length": 60,
+      "prediction_horizon": 1,
+      "features": ["open", "high", "low", "close", "volume"],
+      "target_column": "close",
+      "normalization_method": "minmax",
+      "train_split": 0.7,
+      "val_split": 0.15,
+      "test_split": 0.15,
+      "include_technical_indicators": false,
+      "technical_indicators": []
+    },
+    "enhanced": {
+      "sequence_length": 60,
+      "prediction_horizon": 1,
+      "features": ["open", "high", "low", "close", "volume"],
+      "target_column": "close",
+      "normalization_method": "standard",
+      "train_split": 0.7,
+      "val_split": 0.15,
+      "test_split": 0.15,
+      "include_technical_indicators": true,
+      "technical_indicators": ["sma_20", "ema_12", "rsi", "macd", "bb_upper", "bb_lower"]
+    },
+    "large": {
+      "sequence_length": 60,
+      "prediction_horizon": 1,
+      "features": ["open", "high", "low", "close", "volume"],
+      "target_column": "close",
+      "normalization_method": "robust",
+      "train_split": 0.70,
+      "val_split": 0.20,
+      "test_split": 0.10,
+      "include_technical_indicators": true,
+      "technical_indicators": [
+        "sma_5", "sma_10", "sma_20", "sma_50",
+        "ema_12", "ema_26", "ema_50",
+        "rsi", "macd", "macd_signal", "macd_hist",
+        "bb_upper", "bb_middle", "bb_lower",
+        "atr", "obv", "stoch_k", "stoch_d"
+      ]
+    },
+    "advanced": {
+      "sequence_length": 120,
+      "prediction_horizon": 5,
+      "features": ["open", "high", "low", "close", "volume"],
+      "target_column": "close",
+      "normalization_method": "robust",
+      "train_split": 0.7,
+      "val_split": 0.15,
+      "test_split": 0.15,
+      "include_technical_indicators": true,
+      "technical_indicators": [
+        "sma_5", "sma_10", "sma_20", "sma_50",
+        "ema_12", "ema_26", "ema_50",
+        "rsi", "macd", "macd_signal", "macd_hist",
+        "bb_upper", "bb_middle", "bb_lower",
+        "atr", "obv", "stoch_k", "stoch_d"
+      ]
+    }
+  },
+  "stock_symbols": {
+    "AAPL": "Apple Inc.",
+    "GOOGL": "Alphabet Inc.",
+    "META": "Meta Platforms Inc.",
+    "TSLA": "Tesla Inc.",
+    "NVDA": "NVIDIA Corporation",
+    "MSFT": "Microsoft Corporation",
+    "AMZN": "Amazon.com Inc.",
+    "NFLX": "Netflix Inc.",
+    "AMD": "Advanced Micro Devices Inc.",
+    "INTC": "Intel Corporation"
+  }
+}

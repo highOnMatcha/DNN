@@ -1,15 +1,52 @@
 # Time Series Project Requirements  
 # Install after root requirements: pip install -r requirements.txt
 
-# Time series analysis
+# Deep Learning for Time Series
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Data collection and processing
+yfinance>=0.2.20
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# Time series analysis and modeling
 statsmodels>=0.14.0
 scikit-learn>=1.3.0
+ta>=0.10.2  # Technical analysis indicators
+arch>=6.2.0  # GARCH models
 
-# Deep learning for time series
-torch>=2.0.0
-
-# Time series visualization
+# Data visualization
 plotly>=5.15.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
 
-# Experiment tracking
+# Experiment tracking and logging
 wandb>=0.15.0
+tensorboard>=2.13.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+hydra-core>=1.3.0
+
+# Data formats and storage
+pyarrow>=12.0.0
+h5py>=3.9.0
+
+# Parallel processing
+joblib>=1.3.0
+
+# Interactive features
+ipywidgets>=8.0.0
+jupyter>=1.0.0
+
+# API clients
+alpha-vantage>=2.3.1
+finnhub-python>=2.4.0
+
+# Utilities
+tqdm>=4.65.0
+click>=8.1.0
