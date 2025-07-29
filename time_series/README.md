@@ -5,11 +5,8 @@ Deep learning pipeline for predicting stock prices using LSTM neural networks. P
 ## Quick Start
 
 ```bash
-# Setup environment
-python setup.py
-
 # Download stock data
-python src/data_collection.py --symbols AAPL GOOGL META TSLA --days 1000
+python src/data_collection.py --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --days 1000
 
 # Train model
 python src/train.py --model lstm-small --symbol AAPL --config development
@@ -77,7 +74,7 @@ cp .env.example .env
 
 ```bash
 # Download data for specific symbols
-python src/data_collection.py --symbols AAPL GOOGL META TSLA --days 1000
+python src/data_collection.py --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --days 1000
 
 # Download with custom date range
 python src/data_collection.py --symbols AAPL --start-date 2020-01-01 --end-date 2024-12-31
@@ -102,7 +99,7 @@ python src/train.py --model lstm-small --symbol AAPL --config development
 python src/train.py --model lstm-medium --symbol GOOGL --config development --data-config enhanced
 
 # Multi-symbol training
-python src/train.py --model lstm-large --symbols AAPL GOOGL META TSLA --config production
+python src/train.py --model lstm-large --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --config production
 
 # Resume from checkpoint
 python src/train.py --resume ./models/lstm_small_AAPL/checkpoint-100
@@ -124,14 +121,32 @@ python src/predict.py --model lstm-small --symbol AAPL --days 30 --plot
 # Evaluate model performance
 python src/predict.py --model lstm-small --symbol AAPL --evaluate
 
+# Create animated prediction visualization
+python src/predict.py --model lstm-large --symbol AAPL --evaluate --animate --start-index 50 --fps 12 --config production --model-dir .
+
 # Batch prediction for multiple symbols
-python src/predict.py --model lstm-large --symbols AAPL GOOGL META TSLA --days 14
+python src/predict.py --model lstm-large --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --days 14 --config production --model-dir .
 
 # Interactive mode
 python src/predict.py --interactive --model lstm-small
 ```
 
-### 4. Jupyter Notebooks
+### 4. Animated Visualizations
+
+The pipeline now supports animated visualizations that show how predictions compare to actual prices over time:
+
+```bash
+# Basic animation (starts from beginning, 10 FPS)
+python src/predict.py --model lstm-large --symbol AAPL --evaluate --animate --config production --model-dir .
+
+# Custom animation settings
+python src/predict.py --model lstm-large --symbol AAPL --evaluate --animate --start-index 100 --fps 15 --config production --model-dir .
+
+# Animation in interactive mode (option 4)
+python src/predict.py --interactive --model lstm-large --config production --model-dir .
+```
+
+### 5. Jupyter Notebooks
 
 ```bash
 # Start Jupyter and open the exploration notebook
@@ -212,7 +227,6 @@ The pipeline evaluates models using multiple metrics:
 - **Directional Accuracy**: Percentage of correct price direction predictions
 - **Sharpe Ratio**: Risk-adjusted return for trading strategies
 
-## 🔬 Advanced Features
 
 ### Experiment Tracking
 ```bash

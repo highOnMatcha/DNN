@@ -22,6 +22,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
+import plotly.offline as pyo
 import click
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
@@ -63,19 +64,27 @@ class StockPredictor:
         checkpoint_path = Path(model_path)
         
         if not checkpoint_path.exists():
-            # Try to find best_model.pt in the directory
-            if checkpoint_path.is_dir():
-                best_model_path = checkpoint_path / "best_model.pt"
-                if best_model_path.exists():
-                    checkpoint_path = best_model_path
-                else:
-                    raise FileNotFoundError(f"No model found in directory: {model_path}")
+            raise FileNotFoundError(f"Model path not found: {model_path}")
+        
+        # If it's a directory, look for best_model.pt inside
+        if checkpoint_path.is_dir():
+            best_model_path = checkpoint_path / "best_model.pt"
+            if best_model_path.exists():
+                checkpoint_path = best_model_path
             else:
-                raise FileNotFoundError(f"Model file not found: {model_path}")
+                # Look for the latest checkpoint file
+                checkpoint_files = list(checkpoint_path.glob("checkpoint-*.pt"))
+                if checkpoint_files:
+                    # Sort by checkpoint number and get the latest one
+                    checkpoint_files.sort(key=lambda x: int(x.stem.split('-')[1]))
+                    checkpoint_path = checkpoint_files[-1]
+                    logger.info(f"Using latest checkpoint: {checkpoint_path.name}")
+                else:
+                    raise FileNotFoundError(f"No model files found in directory: {model_path}")
         
         logger.info(f"Loading model from: {checkpoint_path}")
         
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         
         self.model_config = checkpoint['model_config']
         self.data_config = checkpoint['data_config']
@@ -305,6 +314,215 @@ def create_prediction_plot(timestamps: List[datetime],
     return fig
 
 
+def create_animated_prediction_plot(timestamps: List[datetime],
+                                  actual_prices: np.ndarray,
+                                  predicted_prices: np.ndarray,
+                                  symbol: str,
+                                  start_index: int = 0,
+                                  fps: int = 10) -> go.Figure:
+    """
+    Create an animated plot showing real vs predicted prices progressing over time.
+    
+    Args:
+        timestamps: List of timestamps
+        actual_prices: Array of actual prices
+        predicted_prices: Array of predicted prices
+        symbol: Stock symbol
+        start_index: Starting point in the dataset (default: 0)
+        fps: Frames per second for animation (default: 10)
+        
+    Returns:
+        Plotly animated figure
+    """
+    # Slice data from starting point
+    timestamps = timestamps[start_index:]
+    actual_prices = actual_prices[start_index:]
+    predicted_prices = predicted_prices[start_index:]
+    
+    # Create frames for animation
+    frames = []
+    frame_duration = int(1000 / fps)  # Duration in milliseconds
+    
+    for i in range(1, len(timestamps) + 1):
+        # Data up to current point
+        current_timestamps = timestamps[:i]
+        current_actual = actual_prices[:i]
+        current_predicted = predicted_prices[:i]
+        
+        frame = go.Frame(
+            data=[
+                go.Scatter(
+                    x=current_timestamps,
+                    y=current_actual,
+                    mode='lines',
+                    name='Actual Price',
+                    line=dict(color='#1f77b4', width=3),
+                    showlegend=True if i == 1 else False
+                ),
+                go.Scatter(
+                    x=current_timestamps,
+                    y=current_predicted,
+                    mode='lines',
+                    name='Predicted Price',
+                    line=dict(color='#ff7f0e', width=2, dash='dot'),
+                    opacity=0.7,
+                    showlegend=True if i == 1 else False
+                ),
+                # Current point markers
+                go.Scatter(
+                    x=[current_timestamps[-1]],
+                    y=[current_actual[-1]],
+                    mode='markers',
+                    name='Current Actual',
+                    marker=dict(color='#1f77b4', size=8, symbol='circle'),
+                    showlegend=True if i == 1 else False
+                ),
+                go.Scatter(
+                    x=[current_timestamps[-1]],
+                    y=[current_predicted[-1]],
+                    mode='markers',
+                    name='Current Predicted',
+                    marker=dict(color='#ff7f0e', size=8, symbol='diamond'),
+                    showlegend=True if i == 1 else False
+                )
+            ],
+            name=f"frame_{i}",
+            layout=go.Layout(
+                title=f"{symbol} Price Evolution - {current_timestamps[-1].strftime('%Y-%m-%d')}",
+                annotations=[
+                    dict(
+                        x=current_timestamps[-1],
+                        y=max(current_actual[-1], current_predicted[-1]) * 1.1,
+                        text=f"Actual: ${current_actual[-1]:.2f}<br>Predicted: ${current_predicted[-1]:.2f}<br>Error: ${abs(current_actual[-1] - current_predicted[-1]):.2f}",
+                        showarrow=True,
+                        arrowhead=2,
+                        arrowsize=1,
+                        arrowwidth=2,
+                        arrowcolor="#636363",
+                        ax=20,
+                        ay=-30,
+                        bgcolor="rgba(255,255,255,0.8)",
+                        bordercolor="#636363",
+                        borderwidth=1
+                    )
+                ]
+            )
+        )
+        frames.append(frame)
+    
+    # Initial figure (empty)
+    fig = go.Figure(
+        data=[
+            go.Scatter(x=[], y=[], mode='lines', name='Actual Price', 
+                      line=dict(color='#1f77b4', width=3)),
+            go.Scatter(x=[], y=[], mode='lines', name='Predicted Price', 
+                      line=dict(color='#ff7f0e', width=2, dash='dot'), opacity=0.7),
+            go.Scatter(x=[], y=[], mode='markers', name='Current Actual',
+                      marker=dict(color='#1f77b4', size=8, symbol='circle')),
+            go.Scatter(x=[], y=[], mode='markers', name='Current Predicted',
+                      marker=dict(color='#ff7f0e', size=8, symbol='diamond'))
+        ],
+        frames=frames
+    )
+    
+    # Add animation controls
+    fig.update_layout(
+        title=f"{symbol} Stock Price Prediction Animation",
+        xaxis=dict(
+            title="Date",
+            range=[timestamps[0], timestamps[-1]],
+            type='date'
+        ),
+        yaxis=dict(
+            title="Price ($)",
+            range=[min(min(actual_prices), min(predicted_prices)) * 0.95,
+                   max(max(actual_prices), max(predicted_prices)) * 1.15]
+        ),
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                buttons=list([
+                    dict(
+                        args=[{"frame": {"duration": frame_duration, "redraw": True},
+                               "fromcurrent": True, "transition": {"duration": 50}}],
+                        label="Play",
+                        method="animate"
+                    ),
+                    dict(
+                        args=[{"frame": {"duration": 0, "redraw": True},
+                               "mode": "immediate", "transition": {"duration": 0}}],
+                        label="Pause",
+                        method="animate"
+                    ),
+                    dict(
+                        args=[{"frame": {"duration": frame_duration // 2, "redraw": True},
+                               "fromcurrent": True, "transition": {"duration": 25}}],
+                        label="Fast",
+                        method="animate"
+                    ),
+                    dict(
+                        args=[{"frame": {"duration": frame_duration * 2, "redraw": True},
+                               "fromcurrent": True, "transition": {"duration": 100}}],
+                        label="Slow",
+                        method="animate"
+                    )
+                ]),
+                pad={"r": 10, "t": 87},
+                showactive=False,
+                x=0.011,
+                xanchor="right",
+                y=0,
+                yanchor="top"
+            ),
+        ],
+        sliders=[
+            dict(
+                active=0,
+                yanchor="top",
+                xanchor="left",
+                currentvalue={
+                    "font": {"size": 20},
+                    "prefix": "Date: ",
+                    "visible": True,
+                    "xanchor": "right"
+                },
+                transition={"duration": 50, "easing": "cubic-in-out"},
+                pad={"b": 10, "t": 50},
+                len=0.9,
+                x=0.1,
+                y=0,
+                steps=[
+                    dict(
+                        args=[
+                            [f"frame_{k}"],
+                            {
+                                "frame": {"duration": frame_duration, "redraw": True},
+                                "mode": "immediate",
+                                "transition": {"duration": 50}
+                            }
+                        ],
+                        label=timestamps[k-1].strftime('%Y-%m-%d'),
+                        method="animate"
+                    )
+                    for k in range(1, len(timestamps) + 1)
+                ]
+            )
+        ],
+        height=600,
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig
+
+
 def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir: str):
     """Interactive prediction mode."""
     print(f"\nInteractive Prediction Mode for {symbol}")
@@ -319,10 +537,11 @@ def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir
             print("1. Test on recent data")
             print("2. Make future predictions")
             print("3. Evaluate model performance")
-            print("4. Switch symbol")
-            print("5. Exit")
+            print("4. Create animated prediction visualization")
+            print("5. Switch symbol")
+            print("6. Exit")
             
-            choice = input("\nEnter your choice (1-5): ").strip()
+            choice = input("\nEnter your choice (1-6): ").strip()
             
             if choice == "1":
                 # Test on recent data
@@ -382,6 +601,38 @@ def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir
                 print(f"\nPlot saved to: {plot_path}")
                 
             elif choice == "4":
+                # Create animated visualization
+                results = predictor.predict_on_test_data(processed_data)
+                
+                # Get animation parameters
+                start_idx = int(input("Enter starting point in dataset (default 0): ") or 0)
+                fps = int(input("Enter animation speed in FPS (default 10): ") or 10)
+                
+                test_data = processed_data['test_data']
+                timestamps = test_data['timestamp'].iloc[:len(results['actuals'])].tolist()
+                
+                # Ensure start_index is within bounds
+                max_start = len(timestamps) - 10  # At least 10 frames
+                start_idx = min(start_idx, max(0, max_start))
+                
+                print(f"Creating animated visualization from index {start_idx} at {fps} FPS...")
+                
+                animated_fig = create_animated_prediction_plot(
+                    timestamps,
+                    results['actuals'],
+                    results['predictions'],
+                    symbol,
+                    start_index=start_idx,
+                    fps=fps
+                )
+                
+                animated_path = f"results/{symbol}_animated_prediction.html"
+                Path("results").mkdir(exist_ok=True)
+                animated_fig.write_html(animated_path)
+                print(f"Animated plot saved to: {animated_path}")
+                print("Open the HTML file in a web browser to view the animation!")
+                
+            elif choice == "5":
                 # Switch symbol
                 print(f"Available symbols: {', '.join(list_available_symbols())}")
                 new_symbol = input("Enter new symbol: ").strip().upper()
@@ -396,7 +647,7 @@ def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir
                 else:
                     print("Invalid symbol")
                     
-            elif choice == "5":
+            elif choice == "6":
                 print("Goodbye!")
                 break
             else:
@@ -416,12 +667,15 @@ def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir
 @click.option('--model-dir', default='models', help='Directory containing trained models')
 @click.option('--output-dir', default='results', help='Directory to save results')
 @click.option('--plot/--no-plot', default=True, help='Generate prediction plots')
+@click.option('--animate', is_flag=True, help='Create animated prediction visualization')
+@click.option('--start-index', type=int, default=0, help='Starting point in dataset for animation (default: 0)')
+@click.option('--fps', type=int, default=10, help='Frames per second for animation (default: 10)')
 @click.option('--interactive', is_flag=True, help='Run in interactive mode')
 @click.option('--evaluate', is_flag=True, help='Evaluate model on test data')
 @click.option('--list-models', is_flag=True, help='List available models')
 @click.option('--list-symbols', is_flag=True, help='List available symbols')
 def main(model, symbol, symbols, config, days, data_dir, model_dir, output_dir, 
-         plot, interactive, evaluate, list_models, list_symbols):
+         plot, animate, start_index, fps, interactive, evaluate, list_models, list_symbols):
     """Make predictions using trained LSTM models."""
     
     # List options
@@ -487,6 +741,30 @@ def main(model, symbol, symbols, config, days, data_dir, model_dir, output_dir,
                     plot_path = Path(output_dir) / f"{sym}_evaluation_plot.html"
                     fig.write_html(plot_path)
                     logger.info(f"Evaluation plot saved to: {plot_path}")
+                
+                # Create animated visualization if requested
+                if animate:
+                    logger.info(f"Creating animated prediction visualization...")
+                    test_data = processed_data['test_data']
+                    timestamps = test_data['timestamp'].iloc[:len(results['actuals'])].tolist()
+                    
+                    # Ensure start_index is within bounds
+                    max_start = len(timestamps) - 10  # At least 10 frames
+                    start_idx = min(start_index, max(0, max_start))
+                    
+                    animated_fig = create_animated_prediction_plot(
+                        timestamps,
+                        results['actuals'],
+                        results['predictions'],
+                        sym,
+                        start_index=start_idx,
+                        fps=fps
+                    )
+                    
+                    animated_path = Path(output_dir) / f"{sym}_animated_prediction.html"
+                    animated_fig.write_html(animated_path)
+                    logger.info(f"Animated prediction plot saved to: {animated_path}")
+                    logger.info(f"Animation starts from index {start_idx} with {fps} FPS")
             
             # Make future predictions
             if days > 0:
