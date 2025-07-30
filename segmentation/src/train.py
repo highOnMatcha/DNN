@@ -15,23 +15,89 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
+# Load environment variables first
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add the src directory to Python path
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
 import torch
 import wandb
-from dotenv import load_dotenv
 
 # Import project modules
 from core.logging_config import initialize_project_logging, get_logger, log_system_info
 from core.trainer import SegmentationTrainer
 from config.settings import get_config, list_available_configs, PASCAL_VOC_CLASSES
-from data.loaders import create_datasets, create_dataloaders, visualize_sample
+from data.loaders import create_datasets, create_dataloaders
 from utils.metrics import visualize_predictions, plot_confusion_matrix
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
 
 # Initialize module logger
 logger = get_logger(__name__)
+
+
+def log_test_predictions(trainer, val_loader, config, wandb_run=None, num_samples=8):
+    """Log sample predictions from validation/test set with visualizations."""
+    logger.info(f"Logging {num_samples} test predictions...")
+    
+    trainer.model.eval()
+    device = next(trainer.model.parameters()).device
+    
+    samples_logged = 0
+    prediction_images = []
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(val_loader):
+            if samples_logged >= num_samples:
+                break
+                
+            images = batch['image'].to(device)
+            masks = batch['mask'].to(device)
+            
+            outputs = trainer.model(images)
+            predictions = torch.argmax(outputs, dim=1)
+            
+            for i in range(images.size(0)):
+                if samples_logged >= num_samples:
+                    break
+                    
+                image = images[i].cpu().numpy().transpose(1, 2, 0)
+                image = image * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])
+                image = np.clip(image, 0, 1)
+                
+                true_mask = masks[i].cpu().numpy()
+                pred_mask = predictions[i].cpu().numpy()
+                
+                fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+                
+                axes[0].imshow(image)
+                axes[0].set_title('Original Image')
+                axes[0].axis('off')
+                
+                axes[1].imshow(true_mask, cmap='tab20', vmin=0, vmax=20)
+                axes[1].set_title('Ground Truth')
+                axes[1].axis('off')
+                
+                axes[2].imshow(pred_mask, cmap='tab20', vmin=0, vmax=20)
+                axes[2].set_title('Prediction')
+                axes[2].axis('off')
+                
+                plt.tight_layout()
+                
+                if wandb_run:
+                    wandb_run.log({f"test_prediction_{samples_logged}": wandb.Image(fig)})
+                
+                prediction_images.append(fig)
+                plt.close(fig)
+                
+                samples_logged += 1
+    
+    logger.info(f"Successfully logged {samples_logged} test predictions")
+    return prediction_images
 
 
 def setup_wandb(
@@ -39,22 +105,8 @@ def setup_wandb(
     model_name: str = "unknown", 
     config_type: str = "default"
 ) -> Optional[Any]:
-    """
-    Setup WandB authentication and project initialization.
-    
-    Args:
-        project_name: WandB project name
-        model_name: Model identifier
-        config_type: Configuration type being used
-        
-    Returns:
-        WandB run instance or None if disabled
-    """
-    # Load environment variables
-    load_dotenv()
-    
+    """Setup WandB authentication and project initialization."""
     try:
-        # Initialize WandB
         wandb_run = wandb.init(
             project=project_name,
             name=f"{model_name}_{config_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -64,6 +116,7 @@ def setup_wandb(
         
         logger.info(f"WandB initialized: {wandb_run.name}")
         logger.info(f"Project: {project_name}")
+        logger.info(f"View at: {wandb_run.url}")
         
         return wandb_run
     
@@ -73,37 +126,45 @@ def setup_wandb(
         return None
 
 
+def display_model_info(config: Any, config_name: str) -> None:
+    """Display comprehensive model and training information."""
+    logger.info("=" * 80)
+    logger.info("SEGMENTATION TRAINING PIPELINE")
+    logger.info("=" * 80)
+    logger.info(f"Configuration: {config_name}")
+    logger.info(f"Model Name: {config.name}")
+    logger.info(f"Architecture: {config.architecture}")
+    logger.info(f"Encoder: {config.encoder_name}")
+    logger.info(f"Pre-trained Weights: {config.encoder_weights}")
+    logger.info(f"Number of Classes: {config.classes}")
+    logger.info(f"Input Size: {config.image_size}")
+    logger.info(f"Batch Size: {config.batch_size}")
+    logger.info(f"Epochs: {config.num_epochs}")
+    logger.info(f"Learning Rate: {config.learning_rate}")
+    logger.info(f"Optimizer: {config.optimizer}")
+    logger.info(f"WandB Logging: {'Enabled' if config.use_wandb else 'Disabled'}")
+    logger.info(f"Data Augmentation: {'Enabled' if config.use_augmentation else 'Disabled'}")
+    logger.info(f"Mixed Precision: {'Enabled' if config.mixed_precision else 'Disabled'}")
+    logger.info("=" * 80)
+
+
 def evaluate_model(
     trainer: SegmentationTrainer,
     val_loader,
     config,
     save_visualizations: bool = True
 ) -> Dict[str, float]:
-    """
-    Evaluate the trained model and generate visualizations.
-    
-    Args:
-        trainer: Trained model trainer instance
-        val_loader: Validation data loader
-        config: Configuration object
-        save_visualizations: Whether to save visualization plots
-        
-    Returns:
-        Dictionary with evaluation metrics
-    """
+    """Evaluate the trained model and generate visualizations."""
     logger.info("Starting model evaluation...")
     
-    # Run validation
     val_metrics = trainer.validate_epoch(val_loader)
     
-    # Log evaluation results
     logger.info("=== Evaluation Results ===")
     logger.info(f"Validation Loss: {val_metrics['loss']:.4f}")
     logger.info(f"Pixel Accuracy: {val_metrics['pixel_accuracy']:.4f}")
     logger.info(f"Mean IoU: {val_metrics['mean_iou']:.4f}")
     logger.info(f"Mean Dice: {val_metrics['mean_dice']:.4f}")
     
-    # Per-class metrics
     logger.info("\n=== Per-Class Metrics ===")
     for i, class_name in enumerate(PASCAL_VOC_CLASSES):
         if i < len(val_metrics['iou_per_class']):
@@ -112,18 +173,16 @@ def evaluate_model(
             logger.info(f"{class_name}: IoU={iou:.4f}, Dice={dice:.4f}")
     
     if save_visualizations:
-        # Generate sample predictions
         trainer.model.eval()
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_loader):
-                if batch_idx >= 2:  # Only visualize first 2 batches
+                if batch_idx >= 2:
                     break
                 
                 images = batch['image'].to(trainer.device)
                 targets = batch['mask']
                 predictions = trainer.model(images)
                 
-                # Save visualization
                 from config.settings import get_results_root_dir
                 results_dir = get_results_root_dir()
                 save_path = os.path.join(results_dir, f"predictions_batch_{batch_idx}.png")
@@ -148,22 +207,11 @@ def run_training(
     use_wandb: bool = True,
     evaluate_only: bool = False
 ) -> None:
-    """
-    Run the complete training pipeline.
-    
-    Args:
-        config_name: Configuration name to use
-        resume_from: Optional checkpoint path to resume from
-        use_wandb: Whether to use WandB logging
-        evaluate_only: Whether to only run evaluation (requires resume_from)
-    """
-    # Load configuration
+    """Run the complete training pipeline."""
     config = get_config(config_name)
-    logger.info(f"Using configuration: {config_name}")
-    logger.info(f"Model: {config.name}")
-    logger.info(f"Architecture: {config.architecture}")
     
-    # Initialize WandB if enabled
+    display_model_info(config, config_name)
+    
     wandb_run = None
     if use_wandb and config.use_wandb:
         wandb_run = setup_wandb(
@@ -179,13 +227,6 @@ def run_training(
         
         logger.info(f"Training samples: {len(train_dataset)}")
         logger.info(f"Validation samples: {len(val_dataset)}")
-        
-        # Visualize sample data
-        logger.info("Visualizing sample data...")
-        from config.settings import get_results_root_dir
-        results_dir = get_results_root_dir()
-        sample_viz_path = os.path.join(results_dir, "dataset_sample.png")
-        visualize_sample(train_dataset, 0, save_path=sample_viz_path)
         
         # Create data loaders
         train_loader, val_loader = create_dataloaders(config, train_dataset, val_dataset)
@@ -206,6 +247,10 @@ def run_training(
             # Only run evaluation
             eval_metrics = evaluate_model(trainer, val_loader, config)
             
+            # Log test predictions for evaluation-only mode
+            logger.info("Logging test set predictions...")
+            log_test_predictions(trainer, val_loader, config, wandb_run, num_samples=8)
+            
             if wandb_run:
                 wandb_run.log({"final_eval": eval_metrics})
         else:
@@ -216,6 +261,10 @@ def run_training(
             # Run final evaluation
             logger.info("Running final evaluation...")
             eval_metrics = evaluate_model(trainer, val_loader, config)
+            
+            # Log test predictions
+            logger.info("Logging test set predictions...")
+            log_test_predictions(trainer, val_loader, config, wandb_run, num_samples=8)
             
             # Log final metrics to WandB
             if wandb_run:
@@ -262,14 +311,30 @@ def run_training(
 
 def main():
     """Main entry point for the training script."""
-    parser = argparse.ArgumentParser(description="Train semantic segmentation models")
+    parser = argparse.ArgumentParser(
+        description="Semantic Segmentation Training Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Available Configurations:
+  default      - UNet with ResNet50 encoder (production settings)
+  test         - Fast testing config (small images, few epochs)
+  development  - Development config (moderate settings)
+  production   - Full production config (large images, many epochs)
+
+Examples:
+  python src/train.py --config test
+  python src/train.py --config default
+  python src/train.py --config production --resume checkpoints/model.pth
+  python src/train.py --evaluate-only --resume checkpoints/best_model.pth
+        """
+    )
     
     parser.add_argument(
         "--config",
         type=str,
         default="default",
         choices=list_available_configs(),
-        help="Configuration to use for training"
+        help="Configuration to use for training (default: %(default)s)"
     )
     
     parser.add_argument(
@@ -282,7 +347,7 @@ def main():
     parser.add_argument(
         "--no-wandb",
         action="store_true",
-        help="Disable WandB logging"
+        help="Disable WandB logging (WandB is enabled by default)"
     )
     
     parser.add_argument(

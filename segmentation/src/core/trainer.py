@@ -18,8 +18,8 @@ import numpy as np
 from tqdm import tqdm
 
 from .logging_config import get_logger, log_model_info, TrainingProgressLogger
-from ..models.unet import create_segmentation_model, count_parameters
-from ..utils.metrics import (
+from models.unet import create_segmentation_model, count_parameters
+from utils.metrics import (
     SegmentationMetrics, 
     dice_loss, 
     focal_loss, 

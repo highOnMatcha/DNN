@@ -196,7 +196,11 @@ class SegmentationMetrics:
         }
 
 
-def dice_loss(predictions: torch.Tensor, targets: torch.Tensor, smooth: float = 1.0) -> torch.Tensor:
+def dice_loss(
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    smooth: float = 1e-6
+) -> torch.Tensor:
     """
     Compute Dice loss for segmentation.
     
@@ -210,6 +214,9 @@ def dice_loss(predictions: torch.Tensor, targets: torch.Tensor, smooth: float = 
     """
     # Apply softmax to predictions
     predictions = F.softmax(predictions, dim=1)
+    
+    # Ensure targets are in valid range before one-hot encoding
+    targets = torch.clamp(targets, 0, predictions.size(1) - 1)
     
     # Convert targets to one-hot encoding
     targets_one_hot = F.one_hot(targets, num_classes=predictions.size(1))
@@ -246,7 +253,12 @@ def focal_loss(
     Returns:
         Focal loss as tensor
     """
-    ce_loss = F.cross_entropy(predictions, targets, ignore_index=ignore_index, reduction='none')
+    # Handle ignore_index properly for cross_entropy
+    if ignore_index is not None:
+        ce_loss = F.cross_entropy(predictions, targets, ignore_index=ignore_index, reduction='none')
+    else:
+        ce_loss = F.cross_entropy(predictions, targets, reduction='none')
+    
     pt = torch.exp(-ce_loss)
     focal_loss = alpha * (1 - pt) ** gamma * ce_loss
     return focal_loss.mean()
@@ -272,7 +284,12 @@ def combined_loss(
     Returns:
         Combined loss as tensor
     """
-    ce_loss = F.cross_entropy(predictions, targets, ignore_index=ignore_index)
+    # Handle ignore_index properly for cross_entropy
+    if ignore_index is not None:
+        ce_loss = F.cross_entropy(predictions, targets, ignore_index=ignore_index)
+    else:
+        ce_loss = F.cross_entropy(predictions, targets)
+    
     dice_loss_val = dice_loss(predictions, targets)
     
     return ce_weight * ce_loss + dice_weight * dice_loss_val
@@ -339,7 +356,7 @@ def visualize_predictions(
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
     
-    plt.show()
+    plt.close()  # Close figure instead of showing to prevent freezing
 
 
 def plot_confusion_matrix(
@@ -385,7 +402,7 @@ def plot_confusion_matrix(
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
     
-    plt.show()
+    plt.close()  # Close figure instead of showing to prevent freezing
 
 
 def calculate_flops(model: torch.nn.Module, input_size: Tuple[int, ...]) -> int:

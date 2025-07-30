@@ -170,6 +170,14 @@ class SegmentationConfig:
     rotation_limit: int = 15
     brightness_limit: float = 0.2
     contrast_limit: float = 0.2
+    hue_shift_limit: int = 20
+    saturation_shift_limit: int = 30
+    value_shift_limit: int = 20
+    gaussian_blur_prob: float = 0.1
+    gaussian_noise_prob: float = 0.1
+    elastic_transform_prob: float = 0.1
+    grid_distortion_prob: float = 0.1
+    optical_distortion_prob: float = 0.1
     
     # Output Configuration
     output_dir: str = ""
@@ -183,7 +191,7 @@ class SegmentationConfig:
     
     # Evaluation Configuration
     eval_frequency: int = 1
-    metrics: List[str] = None
+    metrics: Optional[List[str]] = None
     
     # Device Configuration
     device: str = "auto"
@@ -209,7 +217,7 @@ TEST_CONFIG = SegmentationConfig(
     batch_size=2,
     num_epochs=5,
     image_size=(128, 128),
-    use_wandb=False,
+    use_wandb=True,  # Enable WandB by default for test config
     mixed_precision=False
 )
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
 import json
+import numpy as np
 
 
 class JsonFormatter(logging.Formatter):
@@ -291,7 +292,23 @@ class TrainingProgressLogger:
         
         # Log metrics
         for metric_name, value in metrics.items():
-            self.logger.info(f"{metric_name}: {value:.4f}")
+            # Convert numpy arrays and tensors to float for logging
+            try:
+                if isinstance(value, np.ndarray):
+                    if value.size == 1:
+                        value = float(value.item())
+                    else:
+                        value = float(value.mean())
+                elif hasattr(value, 'item'):  # PyTorch tensor
+                    value = float(value.item())
+                elif isinstance(value, (list, tuple)) and len(value) == 1:
+                    value = float(value[0])
+                elif not isinstance(value, (int, float)):
+                    value = float(value)
+                self.logger.info(f"{metric_name}: {value:.4f}")
+            except (TypeError, ValueError, AttributeError):
+                # Fallback for any unexpected types
+                self.logger.info(f"{metric_name}: {value}")
     
     def log_training_end(self) -> None:
         """Log training completion."""

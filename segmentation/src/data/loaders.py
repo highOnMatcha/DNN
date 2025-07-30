@@ -18,7 +18,7 @@ from albumentations.pytorch import ToTensorV2
 import cv2
 from pathlib import Path
 
-from ..config.settings import PASCAL_VOC_CLASSES, PASCAL_VOC_COLORS
+from config.settings import PASCAL_VOC_CLASSES, PASCAL_VOC_COLORS
 
 
 class PascalVOCDataset(Dataset):
@@ -108,18 +108,28 @@ class PascalVOCDataset(Dataset):
         mask_path = self.masks_dir / f"{img_id}.png"
         mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         
-        # Handle class 255 (border/ignore) by setting it to 0 (background)
-        mask[mask == 255] = 0
+        # Handle class 255 (border/ignore) and any other invalid values
+        if mask is not None:
+            mask[mask == 255] = 0  # Set border pixels to background
+            mask = np.clip(mask, 0, self.num_classes - 1)  # Ensure all values are in valid range
         
         # Apply transforms
         if self.transform:
             transformed = self.transform(image=image, mask=mask)
             image = transformed['image']
             mask = transformed['mask']
+            
+        # Final safety check for mask values after transforms
+        if torch.is_tensor(mask):
+            mask = torch.clamp(mask, 0, self.num_classes - 1)
+            mask = mask.long()
+        else:
+            # Convert numpy to tensor if needed
+            mask = torch.from_numpy(mask).long()
         
         return {
             'image': image,
-            'mask': mask.long(),
+            'mask': mask,
             'image_id': img_id
         }
     
@@ -166,16 +176,15 @@ def get_augmentation_pipeline(
         # Validation/test pipeline - only resize and normalize
         return A.Compose([
             A.Resize(height=config.image_size[0], width=config.image_size[1]),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2()
         ])
     
-    transforms_list = [
-        A.Resize(height=config.image_size[0], width=config.image_size[1])
-    ]
+    transforms_list = []
+    transforms_list.append(A.Resize(height=config.image_size[0], width=config.image_size[1]))
     
     if config.use_augmentation:
-        # Add augmentations for training
+        # Add basic geometric augmentations
         if config.horizontal_flip_prob > 0:
             transforms_list.append(A.HorizontalFlip(p=config.horizontal_flip_prob))
         
@@ -185,6 +194,7 @@ def get_augmentation_pipeline(
         if config.rotation_limit > 0:
             transforms_list.append(A.Rotate(limit=config.rotation_limit, p=0.5))
         
+        # Color augmentations
         if config.brightness_limit > 0 or config.contrast_limit > 0:
             transforms_list.append(A.RandomBrightnessContrast(
                 brightness_limit=config.brightness_limit,
@@ -192,21 +202,62 @@ def get_augmentation_pipeline(
                 p=0.5
             ))
         
-        # Additional augmentations
-        transforms_list.extend([
-            A.OneOf([
+        # HSV augmentations
+        if (hasattr(config, 'hue_shift_limit') and config.hue_shift_limit > 0 or 
+            hasattr(config, 'saturation_shift_limit') and config.saturation_shift_limit > 0 or
+            hasattr(config, 'value_shift_limit') and config.value_shift_limit > 0):
+            transforms_list.append(A.HueSaturationValue(
+                hue_shift_limit=getattr(config, 'hue_shift_limit', 0),
+                sat_shift_limit=getattr(config, 'saturation_shift_limit', 0),
+                val_shift_limit=getattr(config, 'value_shift_limit', 0),
+                p=0.3
+            ))
+        
+        # Blur augmentations
+        blur_transforms = []
+        if hasattr(config, 'gaussian_blur_prob') and config.gaussian_blur_prob > 0:
+            blur_transforms.extend([
                 A.Blur(blur_limit=3, p=1.0),
-                A.GaussianBlur(blur_limit=3, p=1.0),
-            ], p=0.1),
-            A.OneOf([
-                A.GaussNoise(var_limit=(10.0, 50.0), p=1.0),
-                A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.5), p=1.0),
-            ], p=0.1),
-        ])
+                A.GaussianBlur(blur_limit=3, p=1.0)
+            ])
+        
+        if blur_transforms:
+            transforms_list.append(A.OneOf(blur_transforms, p=config.gaussian_blur_prob))
+        
+        # Noise augmentations
+        noise_transforms = []
+        if hasattr(config, 'gaussian_noise_prob') and config.gaussian_noise_prob > 0:
+            noise_transforms.extend([
+                A.GaussNoise(noise_scale_factor=0.1, p=1.0),
+                A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.5), p=1.0)
+            ])
+        
+        if noise_transforms:
+            transforms_list.append(A.OneOf(noise_transforms, p=config.gaussian_noise_prob))
+        
+        # Distortion augmentations
+        distortion_transforms = []
+        if hasattr(config, 'elastic_transform_prob') and config.elastic_transform_prob > 0:
+            distortion_transforms.append(A.ElasticTransform(alpha=120, sigma=120 * 0.05, p=1.0))
+        
+        if hasattr(config, 'grid_distortion_prob') and config.grid_distortion_prob > 0:
+            distortion_transforms.append(A.GridDistortion(p=1.0))
+        
+        if hasattr(config, 'optical_distortion_prob') and config.optical_distortion_prob > 0:
+            distortion_transforms.append(A.OpticalDistortion(distort_limit=0.05, p=1.0))
+        
+        if distortion_transforms:
+            # Use the highest probability among the distortion augmentations
+            max_prob = max(
+                getattr(config, 'elastic_transform_prob', 0),
+                getattr(config, 'grid_distortion_prob', 0),
+                getattr(config, 'optical_distortion_prob', 0)
+            )
+            transforms_list.append(A.OneOf(distortion_transforms, p=max_prob))
     
     # Always apply normalization and tensor conversion
     transforms_list.extend([
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ToTensorV2()
     ])
     
@@ -252,7 +303,7 @@ def create_dataloaders(
 
 def download_pascal_voc_2012(data_dir: str) -> str:
     """
-    Download and extract PASCAL VOC 2012 dataset.
+    Download and extract PASCAL VOC 2012 dataset using Kaggle API (preferred) or HTTP fallback.
     
     Args:
         data_dir: Directory to download and extract the dataset
@@ -260,40 +311,183 @@ def download_pascal_voc_2012(data_dir: str) -> str:
     Returns:
         Path to the extracted dataset
     """
-    import urllib.request
-    import tarfile
+    data_dir_path = Path(data_dir)
+    data_dir_path.mkdir(parents=True, exist_ok=True)
     
-    data_dir = Path(data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    # Use the same structure as the notebook: data/VOC2012
+    voc_root = data_dir_path / "VOC2012"
     
-    dataset_dir = data_dir / "VOCdevkit" / "VOC2012"
+    # Clean up any duplicate directories first
+    _cleanup_duplicate_datasets(data_dir_path)
     
-    if dataset_dir.exists():
-        print(f"Dataset already exists at {dataset_dir}")
-        return str(dataset_dir)
+    # Check if dataset already exists with correct structure
+    essential_dirs = ["JPEGImages", "SegmentationClass", "ImageSets"]
+    if all((voc_root / dir_name).exists() for dir_name in essential_dirs):
+        # Verify splits exist
+        splits_dir = voc_root / "ImageSets" / "Segmentation"
+        if (splits_dir / "train.txt").exists() and (splits_dir / "val.txt").exists():
+            print(f"Dataset already exists with correct structure at {voc_root}")
+            return str(voc_root)
+        else:
+            print("Dataset found but split files missing - will attempt to re-download")
+    else:
+        print("Dataset not found - will download")
     
-    # Download URLs
-    base_url = "http://host.robots.ox.ac.uk/pascal/VOC/voc2012/"
-    files_to_download = [
-        "VOCtrainval_11-May-2012.tar"
-    ]
+    # Try Kaggle API first (preferred method)
+    if _try_kaggle_download(data_dir_path):
+        print("Successfully downloaded via Kaggle API")
+        _cleanup_duplicate_datasets(data_dir_path)  # Clean up after download
+        return str(voc_root)
     
-    for filename in files_to_download:
-        url = base_url + filename
-        filepath = data_dir / filename
+    # Fallback to HTTP download
+    print("Kaggle download failed, trying HTTP fallback...")
+    if _try_http_download(data_dir_path):
+        print("Successfully downloaded via HTTP")
+        _cleanup_duplicate_datasets(data_dir_path)  # Clean up after download
+        return str(voc_root)
+    
+    raise RuntimeError("Failed to download dataset via both Kaggle API and HTTP")
+
+
+def _setup_kaggle_from_env() -> Tuple[bool, str]:
+    """Setup Kaggle authentication using environment variables."""
+    import os
+    kaggle_username = os.getenv('KAGGLE_USERNAME')
+    kaggle_key = os.getenv('KAGGLE_KEY')
+    
+    if not kaggle_username or not kaggle_key:
+        return False, "Missing KAGGLE_USERNAME or KAGGLE_KEY in environment variables"
+    
+    # Set environment variables for kaggle
+    os.environ['KAGGLE_USERNAME'] = kaggle_username
+    os.environ['KAGGLE_KEY'] = kaggle_key
+    
+    return True, "Environment variables set successfully"
+
+
+def _cleanup_duplicate_datasets(data_dir: Path) -> None:
+    """Clean up duplicate dataset directories."""
+    import shutil
+    
+    # List of possible duplicate directory names
+    possible_dirs = ["voc2012", "VOC", "VOCdevkit", "pascal-voc-2012"]
+    target_dir = data_dir / "VOC2012"
+    
+    for dir_name in possible_dirs:
+        duplicate_path = data_dir / dir_name
+        if duplicate_path.exists() and duplicate_path != target_dir:
+            # If target doesn't exist, move the duplicate there
+            if not target_dir.exists():
+                print(f"Moving {duplicate_path} to {target_dir}")
+                shutil.move(str(duplicate_path), str(target_dir))
+            else:
+                # If target exists, remove the duplicate
+                print(f"Removing duplicate directory: {duplicate_path}")
+                shutil.rmtree(duplicate_path)
+    
+    # Handle VOCdevkit structure if present
+    vocdevkit_path = data_dir / "VOCdevkit" / "VOC2012"
+    if vocdevkit_path.exists() and not target_dir.exists():
+        print(f"Moving {vocdevkit_path} to {target_dir}")
+        shutil.move(str(vocdevkit_path), str(target_dir))
+        # Remove empty VOCdevkit directory
+        if (data_dir / "VOCdevkit").exists():
+            shutil.rmtree(data_dir / "VOCdevkit")
+
+
+def _try_kaggle_download(data_dir: Path) -> bool:
+    """Try to download dataset using Kaggle API."""
+    try:
+        # Setup environment variables
+        env_setup, env_msg = _setup_kaggle_from_env()
+        if not env_setup:
+            print(f"Kaggle environment setup failed: {env_msg}")
+            return False
         
-        if not filepath.exists():
-            print(f"Downloading {filename}...")
-            urllib.request.urlretrieve(url, filepath)
-            print(f"Downloaded {filename}")
+        # Import and authenticate
+        import kaggle
+        from kaggle.api.kaggle_api_extended import KaggleApi
         
-        # Extract
-        print(f"Extracting {filename}...")
-        with tarfile.open(filepath, 'r') as tar:
-            tar.extractall(data_dir)
-        print(f"Extracted {filename}")
-    
-    return str(dataset_dir)
+        api = KaggleApi()
+        api.authenticate()
+        
+        print("Kaggle authenticated via environment variables")
+        print("Downloading PASCAL VOC 2012 dataset from Kaggle...")
+        
+        # Download using Kaggle API
+        kaggle.api.dataset_download_files(
+            'huanghanchina/pascal-voc-2012',
+            path=str(data_dir),
+            unzip=True
+        )
+        
+        return True
+        
+    except ImportError:
+        print("Kaggle package not installed. Install with: pip install kaggle")
+        return False
+    except Exception as e:
+        print(f"Kaggle download failed: {e}")
+        return False
+
+
+def _try_http_download(data_dir: Path) -> bool:
+    """Try to download dataset using HTTP."""
+    try:
+        import urllib.request
+        import tarfile
+        
+        # Use VOCdevkit structure for HTTP download
+        dataset_dir = data_dir / "VOCdevkit" / "VOC2012"
+        
+        if dataset_dir.exists():
+            print(f"HTTP dataset already exists at {dataset_dir}")
+            # Move to expected VOC2012 location if needed
+            target_dir = data_dir / "VOC2012"
+            if not target_dir.exists():
+                import shutil
+                shutil.move(str(dataset_dir), str(target_dir))
+            return True
+        
+        # Download URLs
+        base_url = "http://host.robots.ox.ac.uk/pascal/VOC/voc2012/"
+        files_to_download = ["VOCtrainval_11-May-2012.tar"]
+        
+        for filename in files_to_download:
+            url = base_url + filename
+            filepath = data_dir / filename
+            
+            if not filepath.exists():
+                print(f"Downloading {filename} from {url}...")
+                urllib.request.urlretrieve(url, filepath)
+                print(f"Downloaded {filename}")
+            
+            # Extract
+            print(f"Extracting {filename}...")
+            with tarfile.open(filepath, 'r') as tar:
+                tar.extractall(data_dir)
+            print(f"Extracted {filename}")
+            
+            # Clean up
+            filepath.unlink()
+        
+        # Move to expected VOC2012 location
+        if dataset_dir.exists():
+            target_dir = data_dir / "VOC2012"
+            if not target_dir.exists():
+                import shutil
+                shutil.move(str(dataset_dir), str(target_dir))
+            # Clean up VOCdevkit folder
+            voc_devkit = data_dir / "VOCdevkit"
+            if voc_devkit.exists():
+                import shutil
+                shutil.rmtree(str(voc_devkit))
+        
+        return True
+        
+    except Exception as e:
+        print(f"HTTP download failed: {e}")
+        return False
 
 
 def create_datasets(config) -> Tuple[PascalVOCDataset, PascalVOCDataset]:
@@ -306,7 +500,7 @@ def create_datasets(config) -> Tuple[PascalVOCDataset, PascalVOCDataset]:
     Returns:
         Tuple of (train_dataset, val_dataset)
     """
-    from ..config.settings import get_data_root_dir
+    from config.settings import get_data_root_dir
     
     # Get data directory
     data_dir = get_data_root_dir()
@@ -396,5 +590,6 @@ def visualize_sample(
     
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Sample visualization saved to: {save_path}")
     
-    plt.show()
+    plt.close()  # Close figure to prevent display
