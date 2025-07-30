@@ -24,6 +24,7 @@ results/
 llm/data 
 time_series/data
 segmentation/data
+pokemon_sprites/data
 
 
 # Data files
