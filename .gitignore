@@ -23,7 +23,7 @@ results/
 
 llm/data 
 time_series/data
-
+segmentation/data
 
 
 # Data files

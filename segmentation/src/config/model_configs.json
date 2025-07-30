@@ -1,0 +1,101 @@
+{
+  "models": {
+    "unet_resnet50": {
+      "architecture": "unet",
+      "encoder_name": "resnet50",
+      "encoder_weights": "imagenet",
+      "description": "U-Net with ResNet50 backbone for PASCAL VOC segmentation"
+    },
+    "unet_efficientnet_b4": {
+      "architecture": "unet",
+      "encoder_name": "efficientnet-b4", 
+      "encoder_weights": "imagenet",
+      "description": "U-Net with EfficientNet-B4 backbone for high accuracy"
+    },
+    "deeplabv3_resnet50": {
+      "architecture": "deeplabv3",
+      "encoder_name": "resnet50",
+      "encoder_weights": "imagenet", 
+      "description": "DeepLabV3 with ResNet50 for semantic segmentation"
+    },
+    "unet_from_scratch": {
+      "architecture": "unet_custom",
+      "encoder_name": "custom",
+      "encoder_weights": null,
+      "description": "Custom U-Net implementation from scratch"
+    }
+  },
+  "datasets": {
+    "pascal_voc_2012": {
+      "name": "PASCAL VOC 2012",
+      "classes": 21,
+      "train_images": 1464,
+      "val_images": 1449,
+      "description": "PASCAL Visual Object Classes Challenge 2012 segmentation dataset"
+    },
+    "cityscapes": {
+      "name": "Cityscapes",
+      "classes": 19,
+      "train_images": 2975,
+      "val_images": 500,
+      "description": "Urban street scenes dataset for semantic segmentation"
+    }
+  },
+  "training": {
+    "optimizers": {
+      "adam": {
+        "lr": 1e-4,
+        "betas": [0.9, 0.999],
+        "weight_decay": 1e-4
+      },
+      "adamw": {
+        "lr": 1e-4,
+        "betas": [0.9, 0.999],
+        "weight_decay": 1e-4
+      },
+      "sgd": {
+        "lr": 1e-3,
+        "momentum": 0.9,
+        "weight_decay": 1e-4
+      }
+    },
+    "schedulers": {
+      "cosine": {
+        "T_max": 100,
+        "eta_min": 1e-6
+      },
+      "step": {
+        "step_size": 30,
+        "gamma": 0.1
+      },
+      "exponential": {
+        "gamma": 0.95
+      }
+    },
+    "augmentations": {
+      "light": {
+        "horizontal_flip": 0.5,
+        "rotation": 10,
+        "brightness": 0.1,
+        "contrast": 0.1
+      },
+      "medium": {
+        "horizontal_flip": 0.5,
+        "vertical_flip": 0.1,
+        "rotation": 15,
+        "brightness": 0.2,
+        "contrast": 0.2,
+        "blur": 0.1
+      },
+      "heavy": {
+        "horizontal_flip": 0.5,
+        "vertical_flip": 0.2,
+        "rotation": 20,
+        "brightness": 0.3,
+        "contrast": 0.3,
+        "blur": 0.2,
+        "elastic_transform": 0.1
+      }
+    }
+  }
+}
