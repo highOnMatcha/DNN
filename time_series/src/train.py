@@ -20,6 +20,7 @@ import numpy as np
 import wandb
 from dotenv import load_dotenv
 import click
+from sklearn.metrics import r2_score
 
 from config.settings import (
     get_model_config, 
@@ -74,12 +75,18 @@ class StockTrainer:
         self.model = None
         self.optimizer = None
         self.scheduler = None
-        self.criterion = nn.MSELoss()
-        self.best_val_loss = float('inf')
+        self.criterion = nn.MSELoss()  # Keep MSE for stable training
+        self.best_val_r2 = -float('inf')  # Use R² for model selection
         self.early_stopping_counter = 0
         
         # Logging
         self.progress_logger = TrainingProgressLogger()
+    
+    def calculate_r2(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
+        """Calculate R² score using scikit-learn."""
+        y_true_np = y_true.detach().cpu().numpy()
+        y_pred_np = y_pred.detach().cpu().numpy()
+        return r2_score(y_true_np, y_pred_np)
         
     def setup_model(self, input_size: int):
         """Setup model, optimizer, and scheduler."""
@@ -126,6 +133,8 @@ class StockTrainer:
         total_loss = 0
         total_mae = 0
         num_batches = 0
+        all_predictions = []
+        all_targets = []
         
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(self.device), target.to(self.device)
@@ -152,11 +161,20 @@ class StockTrainer:
             mae = torch.mean(torch.abs(output.squeeze() - target)).item()
             total_mae += mae
             num_batches += 1
+            
+            # Collect predictions for R² calculation
+            all_predictions.append(output.squeeze().detach())
+            all_targets.append(target.detach())
         
         avg_loss = total_loss / num_batches
         avg_mae = total_mae / num_batches
         
-        return {'loss': avg_loss, 'mae': avg_mae}
+        # Calculate R²
+        all_predictions = torch.cat(all_predictions)
+        all_targets = torch.cat(all_targets)
+        r2 = self.calculate_r2(all_targets, all_predictions)
+        
+        return {'loss': avg_loss, 'mae': avg_mae, 'r2': r2}
     
     def validate_epoch(self, val_loader: DataLoader) -> Dict[str, float]:
         """Validate for one epoch."""
@@ -164,6 +182,8 @@ class StockTrainer:
         total_loss = 0
         total_mae = 0
         num_batches = 0
+        all_predictions = []
+        all_targets = []
         
         with torch.no_grad():
             for data, target in val_loader:
@@ -176,11 +196,20 @@ class StockTrainer:
                 mae = torch.mean(torch.abs(output.squeeze() - target)).item()
                 total_mae += mae
                 num_batches += 1
+                
+                # Collect predictions for R² calculation
+                all_predictions.append(output.squeeze().detach())
+                all_targets.append(target.detach())
         
         avg_loss = total_loss / num_batches
         avg_mae = total_mae / num_batches
         
-        return {'loss': avg_loss, 'mae': avg_mae}
+        # Calculate R²
+        all_predictions = torch.cat(all_predictions)
+        all_targets = torch.cat(all_targets)
+        r2 = self.calculate_r2(all_targets, all_predictions)
+        
+        return {'loss': avg_loss, 'mae': avg_mae, 'r2': r2}
     
     def save_checkpoint(self, epoch: int, metrics: Dict[str, float], is_best: bool = False):
         """Save model checkpoint."""
@@ -193,7 +222,7 @@ class StockTrainer:
             'training_config': self.training_config,
             'data_config': self.data_config,
             'metrics': metrics,
-            'best_val_loss': self.best_val_loss
+            'best_val_r2': self.best_val_r2
         }
         
         # Save regular checkpoint
@@ -204,7 +233,7 @@ class StockTrainer:
         if is_best:
             best_path = self.save_path / "best_model.pt"
             torch.save(checkpoint, best_path)
-            logger.info(f"Saved best model at epoch {epoch}")
+            logger.info(f"Saved best model at epoch {epoch} with R² = {metrics.get('r2', 'N/A'):.6f}")
     
     def load_checkpoint(self, checkpoint_path: str) -> int:
         """Load model checkpoint."""
@@ -216,7 +245,7 @@ class StockTrainer:
         if self.scheduler and checkpoint['scheduler_state_dict']:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         
-        self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        self.best_val_r2 = checkpoint.get('best_val_r2', -float('inf'))
         
         logger.info(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
         return checkpoint['epoch']
@@ -239,7 +268,8 @@ class StockTrainer:
             Training history and metrics
         """
         start_epoch = 0
-        history = {'train_loss': [], 'val_loss': [], 'train_mae': [], 'val_mae': [], 'learning_rate': []}
+        history = {'train_loss': [], 'val_loss': [], 'train_mae': [], 'val_mae': [], 
+                  'train_r2': [], 'val_r2': [], 'learning_rate': []}
         
         # Resume from checkpoint if specified
         if resume_from:
@@ -267,21 +297,19 @@ class StockTrainer:
             
             current_lr = self.optimizer.param_groups[0]['lr']
             
-            # Log metrics
-            self.progress_logger.log_epoch_metrics(
-                epoch + 1,
-                train_metrics['loss'],
-                val_metrics['loss'],
-                train_metrics['mae'],
-                val_metrics['mae'],
-                current_lr
-            )
+            # Log metrics with R² prominently
+            logger.info(f"Epoch {epoch + 1}/{self.training_config.num_epochs}")
+            logger.info(f"  Train - Loss: {train_metrics['loss']:.6f}, MAE: {train_metrics['mae']:.6f}, R²: {train_metrics['r2']:.6f}")
+            logger.info(f"  Val   - Loss: {val_metrics['loss']:.6f}, MAE: {val_metrics['mae']:.6f}, R²: {val_metrics['r2']:.6f}")
+            logger.info(f"  LR: {current_lr:.8f}")
             
             # Store history
             history['train_loss'].append(train_metrics['loss'])
             history['val_loss'].append(val_metrics['loss'])
             history['train_mae'].append(train_metrics['mae'])
             history['val_mae'].append(val_metrics['mae'])
+            history['train_r2'].append(train_metrics['r2'])
+            history['val_r2'].append(val_metrics['r2'])
             history['learning_rate'].append(current_lr)
             
             # WandB logging
@@ -292,14 +320,16 @@ class StockTrainer:
                     'val_loss': val_metrics['loss'],
                     'train_mae': train_metrics['mae'],
                     'val_mae': val_metrics['mae'],
+                    'train_r2': train_metrics['r2'],
+                    'val_r2': val_metrics['r2'],
                     'learning_rate': current_lr
                 })
             
-            # Check for best model
-            is_best = val_metrics['loss'] < self.best_val_loss
+            # Check for best model based on R²
+            is_best = val_metrics['r2'] > self.best_val_r2
             if is_best:
-                self.best_val_loss = val_metrics['loss']
-                self.progress_logger.log_best_model(epoch + 1, val_metrics['loss'])
+                self.best_val_r2 = val_metrics['r2']
+                logger.info(f"New best model! R² = {val_metrics['r2']:.6f}")
                 self.early_stopping_counter = 0
             else:
                 self.early_stopping_counter += 1
@@ -310,13 +340,14 @@ class StockTrainer:
             
             # Early stopping
             if self.early_stopping_counter >= self.training_config.early_stopping_patience:
-                self.progress_logger.log_early_stopping(epoch + 1, self.training_config.early_stopping_patience)
+                logger.info(f"Early stopping after {epoch + 1} epochs (patience: {self.training_config.early_stopping_patience})")
                 break
         
         # Save final checkpoint
         self.save_checkpoint(epoch + 1, val_metrics, False)
         
-        self.progress_logger.finish_training(epoch + 1, None, self.best_val_loss)
+        logger.info(f"Training completed after {epoch + 1} epochs")
+        logger.info(f"Best validation R² = {self.best_val_r2:.6f}")
         
         return history
 
@@ -486,7 +517,7 @@ def main(model, symbol, symbols, config, data_config, resume, data_dir, output_d
             history = trainer.train(train_loader, val_loader, sym, resume)
             
             logger.info(f"Training completed for {sym}")
-            logger.info(f"Best validation loss: {trainer.best_val_loss:.6f}")
+            logger.info(f"Best validation R² = {trainer.best_val_r2:.6f}")
             
             # Cleanup WandB
             if use_wandb and trainer.use_wandb:

@@ -24,7 +24,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.offline as pyo
 import click
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from config.settings import (
     get_model_config, 
@@ -165,6 +165,7 @@ class StockPredictor:
         mse = mean_squared_error(y_true, y_pred)
         rmse = np.sqrt(mse)
         mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+        r2 = r2_score(y_true, y_pred)
         
         # Directional accuracy
         true_direction = np.diff(y_true) > 0
@@ -176,6 +177,7 @@ class StockPredictor:
             'mse': mse,
             'rmse': rmse,
             'mape': mape,
+            'r2': r2,
             'directional_accuracy': directional_accuracy
         }
     
@@ -209,6 +211,7 @@ class StockPredictor:
         logger.info(f"  MAE: {metrics['mae']:.6f}")
         logger.info(f"  RMSE: {metrics['rmse']:.6f}")
         logger.info(f"  MAPE: {metrics['mape']:.2f}%")
+        logger.info(f"  R² Score: {metrics['r2']:.4f}")
         logger.info(f"  Directional Accuracy: {metrics['directional_accuracy']:.2f}%")
         
         return {
@@ -566,6 +569,7 @@ def interactive_prediction_mode(predictor: StockPredictor, symbol: str, data_dir
                 print(f"MAE: ${metrics['mae']:.2f}")
                 print(f"RMSE: ${metrics['rmse']:.2f}")
                 print(f"MAPE: {metrics['mape']:.2f}%")
+                print(f"R² Score: {metrics['r2']:.4f}")
                 print(f"Directional Accuracy: {metrics['directional_accuracy']:.1f}%")
                 
             elif choice == "2":
