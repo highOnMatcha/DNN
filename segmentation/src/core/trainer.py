@@ -8,6 +8,7 @@ and model checkpointing.
 
 import os
 import time
+import warnings
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,6 +17,9 @@ from typing import Dict, List, Optional, Tuple, Any
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
+
+# Suppress PyTorch deprecation warnings for amp
+warnings.filterwarnings("ignore", message=".*torch.cuda.amp.*", category=FutureWarning)
 
 from .logging_config import get_logger, log_model_info, TrainingProgressLogger
 from models.unet import create_segmentation_model, count_parameters
@@ -137,7 +141,10 @@ class SegmentationTrainer:
         self.model.to(self.device)
         
         # Setup mixed precision training
-        self.scaler = torch.cuda.amp.GradScaler() if config.mixed_precision else None
+        if config.mixed_precision:
+            self.scaler = torch.cuda.amp.GradScaler()
+        else:
+            self.scaler = None
         
         # Initialize metrics
         self.train_metrics = SegmentationMetrics(config.classes)

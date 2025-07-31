@@ -48,7 +48,40 @@ The project is designed to work with the **PASCAL VOC 2012** segmentation datase
 - 1,449 validation images
 - Classes: background, aeroplane, bicycle, bird, boat, bottle, bus, car, cat, chair, cow, diningtable, dog, horse, motorbike, person, pottedplant, sheep, sofa, train, tvmonitor
 
-## Installation
+## Quick Reference
+
+### Common Training Commands
+
+```bash
+# Quick test (5 epochs, small images)
+python src/train.py --config test
+
+# Balanced training (ResNet50 backbone)
+python src/train.py --config default
+
+# Best accuracy (EfficientNet-B4 backbone)
+python src/train.py --config production
+
+# Development/debugging
+python src/train.py --config development
+
+# Resume training
+python src/train.py --config production --resume models/checkpoint.pt
+
+# Evaluation only
+python src/train.py --evaluate-only --resume models/best_model.pt
+```
+
+### Model Selection Quick Guide
+
+| Need | Configuration | Command |
+|------|---------------|---------|
+| **Fast testing** | `test` | `python src/train.py --config test` |
+| **Best accuracy** | `production` | `python src/train.py --config production` |
+| **Balanced performance** | `default` | `python src/train.py --config default` |
+| **Development/debugging** | `development` | `python src/train.py --config development` |
+
+### Installation
 
 1. Clone the repository:
 ```bash
@@ -74,35 +107,142 @@ source set_db_env.sh
 
 ## Quick Start
 
+### Available Models and Configurations
+
+The project supports multiple model architectures and training configurations:
+
+#### Model Architectures
+- **U-Net with ResNet50**: Default balanced model (`unet_resnet50`)
+- **U-Net with EfficientNet-B4**: High accuracy model (`unet_efficientnet_b4`) 
+- **DeepLabV3 with ResNet50**: State-of-the-art segmentation (`deeplabv3_resnet50`)
+- **Custom U-Net**: From-scratch implementation (`unet_from_scratch`)
+
+#### Training Configurations
+- **`test`**: Fast testing (2 epochs, 128x128 images, batch_size=2)
+- **`development`**: Medium training (20 epochs, 256x256 images, batch_size=4)
+- **`production`**: Full training (100 epochs, 512x512 images, batch_size=16, EfficientNet-B4)
+- **`default`**: Balanced settings (100 epochs, 256x256 images, batch_size=8, ResNet50)
+
 ### Training
 
-1. **Basic training with default configuration:**
+1. **Basic training with default U-Net ResNet50 model:**
 ```bash
 cd src
 python train.py --config default
 ```
 
-2. **Training with different configurations:**
+2. **Training specific models with different configurations:**
 ```bash
-# Test configuration (small model, few epochs)
+# Quick test with small U-Net model
 python train.py --config test
 
-# Development configuration (medium settings)
+# Development training with medium settings
 python train.py --config development
 
-# Production configuration (full training)
+# Production training with EfficientNet-B4 backbone (best accuracy)
 python train.py --config production
 ```
 
-3. **Resume training from checkpoint:**
+3. **Custom model training by modifying configuration:**
+```bash
+# Edit src/config/settings.py to change model architecture:
+# For DeepLabV3: architecture="deeplabv3"
+# For different encoder: encoder_name="efficientnet-b0"
+python train.py --config default
+
+4. **Resume training from checkpoint:**
 ```bash
 python train.py --config development --resume ../models/unet_dev/checkpoint-10.pt
 ```
 
-4. **Training without WandB logging:**
+5. **Training without WandB logging:**
 ```bash
 python train.py --config default --no-wandb
 ```
+
+### Model Selection Guide
+
+Choose your model and configuration based on your requirements:
+
+| Use Case | Configuration | Model | Training Time | Accuracy | Memory Usage |
+|----------|---------------|-------|---------------|----------|--------------|
+| Quick Testing | `test` | UNet + ResNet50 | ~5 min | Basic | Low |
+| Development | `development` | UNet + ResNet50 | ~2 hours | Good | Medium |
+| Best Accuracy | `production` | UNet + EfficientNet-B4 | ~8 hours | Highest | High |
+| Balanced | `default` | UNet + ResNet50 | ~4 hours | Good | Medium |
+
+### Customizing Model Architecture
+
+To train with a specific model architecture, modify `src/config/settings.py`:
+
+```python
+# Example: Training DeepLabV3 with EfficientNet-B0
+DEFAULT_CONFIG = SegmentationConfig(
+    name="deeplabv3_efficientnet_b0",
+    architecture="deeplabv3",           # Choose: unet, deeplabv3, unet_custom
+    encoder_name="efficientnet-b0",     # Choose: resnet50, efficientnet-b4, etc.
+    encoder_weights="imagenet",         # Use ImageNet pre-trained weights
+    batch_size=8,
+    num_epochs=50,
+    # ... other parameters
+)
+```
+
+### Monitoring Your Training
+
+When you start training, the script will clearly display which model is being used:
+
+```
+================================================================================
+SEGMENTATION TRAINING PIPELINE
+================================================================================
+Configuration: production
+Model Name: unet_production
+Architecture: unet
+Encoder: efficientnet-b4
+Pre-trained Weights: imagenet
+Number of Classes: 21
+Input Size: (512, 512)
+Batch Size: 16
+Epochs: 100
+Learning Rate: 5e-05
+Optimizer: adamw
+WandB Logging: Enabled
+Data Augmentation: Enabled
+Mixed Precision: Enabled
+================================================================================
+```
+
+This information helps you verify:
+- **Model Name**: Unique identifier for this training run
+- **Architecture**: The segmentation model being used (unet, deeplabv3, etc.)
+- **Encoder**: The backbone network (resnet50, efficientnet-b4, etc.)
+- **Pre-trained Weights**: Whether using ImageNet pre-trained weights
+- **Training Settings**: Batch size, learning rate, number of epochs
+
+#### Supported Encoder Backbones
+
+Choose the encoder backbone based on your accuracy vs speed requirements:
+
+**Fast Training (ResNet family)**
+- `resnet18`: Fastest, lowest accuracy
+- `resnet34`: Fast, basic accuracy  
+- `resnet50`: **Recommended balance**
+- `resnet101`: Slower, higher accuracy
+- `resnet152`: Slowest, highest accuracy
+
+**Best Accuracy (EfficientNet family)**
+- `efficientnet-b0`: Efficient baseline
+- `efficientnet-b1`: Better accuracy
+- `efficientnet-b2`: Good balance
+- `efficientnet-b3`: High accuracy
+- `efficientnet-b4`: **Recommended for production**
+- `efficientnet-b5-b7`: Highest accuracy, very slow
+
+**Other Options**
+- **DenseNet**: `densenet121`, `densenet169`, `densenet201`
+- **VGG**: `vgg11`, `vgg13`, `vgg16`, `vgg19`
+- **Many more**: Available through the timm library
 
 ### Inference
 
@@ -123,16 +263,69 @@ python train.py --config production --resume ../models/unet_production/best_mode
 
 ## Configuration
 
-The project uses a flexible configuration system. Available configurations:
+The project uses a flexible configuration system with pre-defined model and training configurations.
 
-- **`test`**: Quick testing with small model and few epochs
-- **`development`**: Medium-scale training for development
-- **`production`**: Full-scale training with best settings
-- **`default`**: Balanced configuration for general use
+### Available Training Configurations
 
-### Custom Configuration
+| Configuration | Model Name | Architecture | Encoder | Image Size | Batch Size | Epochs | Use Case |
+|---------------|------------|--------------|---------|------------|------------|--------|----------|
+| `test` | unet_test | U-Net | ResNet50 | 128×128 | 2 | 5 | Quick testing |
+| `development` | unet_dev | U-Net | ResNet50 | 256×256 | 4 | 20 | Development |
+| `production` | unet_production | U-Net | EfficientNet-B4 | 512×512 | 16 | 100 | Best accuracy |
+| `default` | unet_resnet50 | U-Net | ResNet50 | 256×256 | 8 | 100 | Balanced |
 
-You can modify `src/config/settings.py` to create custom configurations or edit `src/config/model_configs.json` for model-specific settings.
+### Model Architecture Options
+
+The following model architectures are supported:
+
+1. **U-Net** (`architecture="unet"`): 
+   - Classic encoder-decoder with skip connections
+   - Excellent for medical and general segmentation
+   - Supports any encoder backbone
+
+2. **DeepLabV3** (`architecture="deeplabv3"`):
+   - State-of-the-art semantic segmentation
+   - Atrous convolutions for multi-scale features
+   - Higher accuracy, more computational cost
+
+3. **Custom U-Net** (`architecture="unet_custom"`):
+   - Built from scratch implementation
+   - Educational and research purposes
+   - No pre-trained encoders
+
+### Training a Specific Model
+
+To train a specific model architecture:
+
+```bash
+# Method 1: Use existing configurations
+python src/train.py --config production    # UNet + EfficientNet-B4
+python src/train.py --config default       # UNet + ResNet50
+
+# Method 2: Modify configuration in src/config/settings.py
+# Edit the DEFAULT_CONFIG or create a new configuration
+```
+
+### Creating Custom Configurations
+
+Add custom configurations to `src/config/settings.py`:
+
+```python
+CUSTOM_CONFIG = SegmentationConfig(
+    name="deeplabv3_resnet101_large",
+    architecture="deeplabv3",
+    encoder_name="resnet101",
+    encoder_weights="imagenet",
+    batch_size=4,
+    num_epochs=80,
+    image_size=(384, 384),
+    learning_rate=5e-5,
+    use_wandb=True,
+    mixed_precision=True
+)
+```
+
+Then add it to the configs dictionary in `get_config()` function.
 
 Key configuration parameters:
 - `architecture`: Model architecture (unet, deeplabv3, etc.)
@@ -145,12 +338,47 @@ Key configuration parameters:
 
 ## Model Architectures
 
-### Supported Models
+### Available Models
 
-1. **U-Net (Custom)**: Custom implementation from scratch
-2. **U-Net (Pre-trained)**: Using segmentation-models-pytorch
-3. **DeepLabV3**: State-of-the-art segmentation model
-4. **DeepLabV3+**: Enhanced version with decoder
+The project supports multiple state-of-the-art segmentation architectures:
+
+| Architecture | Description | Best Use Case | Accuracy | Speed |
+|-------------|-------------|---------------|----------|-------|
+| **U-Net** | Classic encoder-decoder with skip connections | General segmentation, medical imaging | High | Fast |
+| **DeepLabV3** | Atrous convolutions with ASPP module | Complex scenes, fine details | Highest | Slower |
+| **Custom U-Net** | From-scratch implementation | Research, learning | Medium | Fast |
+
+### Model Configurations in Detail
+
+1. **U-Net (Recommended)**:
+   ```python
+   architecture="unet"
+   encoder_name="resnet50"          # Or efficientnet-b4 for best accuracy
+   encoder_weights="imagenet"       # Pre-trained weights
+   ```
+   - **Pros**: Fast training, good accuracy, memory efficient
+   - **Cons**: May struggle with very complex scenes
+   - **Best for**: Most segmentation tasks, beginners
+
+2. **DeepLabV3 (State-of-the-art)**:
+   ```python
+   architecture="deeplabv3"
+   encoder_name="resnet50"          # Or resnet101 for better accuracy
+   encoder_weights="imagenet"       # Pre-trained weights
+   ```
+   - **Pros**: Highest accuracy, handles multiple scales well
+   - **Cons**: Slower training, more memory usage
+   - **Best for**: Production systems, complex segmentation
+
+3. **Custom U-Net (Educational)**:
+   ```python
+   architecture="unet_custom"
+   encoder_name="custom"            # No pre-trained encoder
+   encoder_weights=None             # Train from scratch
+   ```
+   - **Pros**: Full control, educational value
+   - **Cons**: Longer training time, requires more data
+   - **Best for**: Research, understanding architecture
 
 ### Supported Encoders
 
@@ -265,14 +493,21 @@ The project provides rich visualization capabilities:
 ### Training Examples
 
 ```bash
-# Quick test run
+# Quick test run with small model
 python src/train.py --config test --log-level DEBUG
 
-# Production training with full monitoring
+# Production training with EfficientNet-B4 (best accuracy)
 python src/train.py --config production
 
 # Resume interrupted training
 python src/train.py --config production --resume models/unet_production/checkpoint-50.pt
+
+# Train DeepLabV3 model (modify config first)
+# Edit src/config/settings.py: architecture="deeplabv3"
+python src/train.py --config default
+
+# Training without WandB logging
+python src/train.py --config development --no-wandb
 ```
 
 ### Inference Examples

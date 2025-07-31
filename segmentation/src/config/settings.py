@@ -186,7 +186,7 @@ class SegmentationConfig:
     
     # Logging and Monitoring
     use_wandb: bool = True
-    wandb_project: str = "segmentation-bootcamp"
+    wandb_project: str = "image-segmentation"
     log_frequency: int = 10
     
     # Evaluation Configuration

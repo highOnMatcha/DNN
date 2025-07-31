@@ -101,7 +101,7 @@ def log_test_predictions(trainer, val_loader, config, wandb_run=None, num_sample
 
 
 def setup_wandb(
-    project_name: str = "segmentation-bootcamp", 
+    project_name: str = "image-segmentation", 
     model_name: str = "unknown", 
     config_type: str = "default"
 ) -> Optional[Any]:
