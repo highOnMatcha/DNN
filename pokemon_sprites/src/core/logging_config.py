@@ -100,7 +100,8 @@ class TrainingProgressLogger:
         })
     
     def log_batch(self, epoch: int, batch: int, total_batches: int, 
-                  losses: Dict[str, float], metrics: Optional[Dict[str, float]] = None):
+                  losses: Dict[str, float], metrics: Optional[Dict[str, float]] = None,
+                  total_epochs: Optional[int] = None):
         """Log batch training progress."""
         elapsed = datetime.now() - self.epoch_start_time if self.epoch_start_time else None
         
@@ -122,7 +123,10 @@ class TrainingProgressLogger:
         
         # Create summary message
         loss_str = ", ".join([f"{k}: {v:.4f}" for k, v in losses.items()])
-        message = f"Epoch {epoch + 1}/{total_batches} [{batch + 1}/{total_batches}] - {loss_str}"
+        if total_epochs is not None:
+            message = f"Epoch {epoch + 1}/{total_epochs} [Batch {batch + 1}/{total_batches}] - {loss_str}"
+        else:
+            message = f"Epoch {epoch + 1} [Batch {batch + 1}/{total_batches}] - {loss_str}"
         
         self.logger.info(message, extra={'extra_fields': log_data})
     

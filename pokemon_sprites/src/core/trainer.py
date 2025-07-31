@@ -239,7 +239,8 @@ class PokemonSpriteTrainer:
             if batch_idx % self.training_config.log_frequency == 0:
                 self.progress_logger.log_batch(
                     epoch, batch_idx, num_batches,
-                    {"l1_loss": loss.item()}
+                    {"l1_loss": loss.item()},
+                    total_epochs=self.training_config.epochs
                 )
                 
                 if self.wandb_run:
@@ -314,7 +315,8 @@ class PokemonSpriteTrainer:
                         "g_loss": g_loss.item(),
                         "d_loss": d_loss.item(),
                         "l1_loss": g_l1_loss.item()
-                    }
+                    },
+                    total_epochs=self.training_config.epochs
                 )
                 
                 if self.wandb_run:
