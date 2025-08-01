@@ -31,6 +31,7 @@ from PIL import Image
 from core.logging_config import initialize_project_logging, get_logger, log_system_info, TrainingProgressLogger
 
 from core.trainer import PokemonSpriteTrainer
+from core.memory_efficient_trainer import MemoryEfficientPokemonTrainer
 from config.settings import (
     get_model_config, 
     get_training_config, 
@@ -39,16 +40,17 @@ from config.settings import (
     get_available_training_configs,
     get_data_root_dir
 )
+from data.augmentation import get_augmentation_config, AUGMENTATION_PRESETS
 
 # Initialize module logger
 logger = get_logger(__name__)
 
 
 class PokemonDataset(Dataset):
-    """Dataset for Pokemon artwork to sprite translation."""
+    """Dataset for Pokemon artwork to sprite translation with advanced augmentation."""
     
     def __init__(self, data_dir: str, split: str = "train", image_size: int = 64,
-                 augment: bool = True):
+                 augmentation_level: str = "standard"):
         """
         Initialize Pokemon dataset.
         
@@ -56,11 +58,12 @@ class PokemonDataset(Dataset):
             data_dir: Path to training data directory.
             split: Data split ("train" or "val").
             image_size: Target image size.
-            augment: Whether to apply data augmentation.
+            augmentation_level: Augmentation level ("light", "standard", "production", "none").
         """
         self.data_dir = Path(data_dir)
         self.split = split
         self.image_size = image_size
+        self.augmentation_level = augmentation_level
         
         # Data paths
         self.input_dir = self.data_dir / split / "input"
@@ -76,35 +79,43 @@ class PokemonDataset(Dataset):
         if len(self.input_files) != len(self.target_files):
             raise ValueError(f"Mismatch in number of input ({len(self.input_files)}) and target ({len(self.target_files)}) images")
         
-        # Setup transforms
-        if augment and split == "train":
-            self.transform = transforms.Compose([
-                transforms.Resize((image_size, image_size)),
-                transforms.RandomHorizontalFlip(0.5),
-                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])  # Normalize to [-1, 1]
-            ])
+        # Setup augmentation pipeline
+        if split == "train":
+            self.augmentation = get_augmentation_config(augmentation_level, image_size)
+            self.augmentation.set_dataset(self)  # For augmentations that need dataset reference
         else:
-            self.transform = transforms.Compose([
-                transforms.Resize((image_size, image_size)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-            ])
+            self.augmentation = get_augmentation_config("none", image_size)
+        
+        # Setup basic transforms (applied after augmentation)
+        self.basic_transform = transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])  # Normalize to [-1, 1]
+        ])
         
         logger.info(f"Loaded {len(self.input_files)} {split} samples")
+        logger.info(f"Using '{augmentation_level}' augmentation for {split} split")
     
     def __len__(self):
         return len(self.input_files)
     
-    def __getitem__(self, idx):
-        # Load images
+    def get_raw_sample(self, idx: int) -> Tuple[Image.Image, Image.Image]:
+        """Get raw PIL images without transforms (used by some augmentations)."""
         input_img = Image.open(self.input_files[idx]).convert('RGB')
         target_img = Image.open(self.target_files[idx]).convert('RGB')
+        return input_img, target_img
+    
+    def __getitem__(self, idx):
+        # Load images
+        input_img, target_img = self.get_raw_sample(idx)
         
-        # Apply transforms
-        input_tensor = self.transform(input_img)
-        target_tensor = self.transform(target_img)
+        # Apply augmentation pipeline (only for training)
+        if self.split == "train":
+            input_img, target_img = self.augmentation(input_img, target_img)
+        
+        # Apply basic transforms (resize, normalize)
+        input_tensor = self.basic_transform(input_img)
+        target_tensor = self.basic_transform(target_img)
         
         return input_tensor, target_tensor
 
@@ -195,7 +206,8 @@ def load_and_validate_configs(model_name: str, config_type: str):
         raise
 
 
-def create_data_loaders(training_config, max_samples: Optional[int] = None) -> Tuple[DataLoader, DataLoader]:
+def create_data_loaders(training_config, config_type: str = "development", 
+                       max_samples: Optional[int] = None) -> Tuple[DataLoader, DataLoader]:
     """Create training and validation data loaders."""
     logger.info("Setting up data loaders...")
     
@@ -208,19 +220,27 @@ def create_data_loaders(training_config, max_samples: Optional[int] = None) -> T
         logger.info("Please run the data preparation notebook first")
         raise FileNotFoundError(f"Training data directory not found: {training_data_dir}")
     
+    # Determine augmentation level based on training config
+    if config_type in AUGMENTATION_PRESETS:
+        augmentation_level = AUGMENTATION_PRESETS[config_type]
+    else:
+        augmentation_level = config_type  # Use directly if it's a valid augmentation level
+    
+    logger.info(f"Using '{augmentation_level}' augmentation level for '{config_type}' configuration")
+    
     # Create datasets
     train_dataset = PokemonDataset(
-        training_data_dir, 
+        str(training_data_dir), 
         split="train",
         image_size=training_config.image_size,
-        augment=training_config.augment_data
+        augmentation_level=augmentation_level
     )
     
     val_dataset = PokemonDataset(
-        training_data_dir,
+        str(training_data_dir),
         split="val", 
         image_size=training_config.image_size,
-        augment=False
+        augmentation_level="none"
     )
     
     # Limit samples if specified
@@ -349,7 +369,7 @@ def main():
     parser.add_argument("--model", type=str, required=True,
                        help="Model configuration name")
     parser.add_argument("--config", type=str, default="development",
-                       choices=["test", "development", "production"],
+                       choices=["test", "development", "production", "pixel_art_optimal", "anti_overfitting"],
                        help="Training configuration type")
     parser.add_argument("--max-samples", type=int, default=None,
                        help="Maximum number of training samples (for testing)")
@@ -361,7 +381,16 @@ def main():
     parser.add_argument("--skip-generation", action="store_true",
                        help="Skip generating sprites for missing Pokemon after training")
     parser.add_argument("--max-generate", type=int, default=None,
-                       help="Maximum number of missing sprites to generate (default: 10 for test, 50 for dev, all for production)")
+                       help="Maximum number of missing sprites to generate")
+    parser.add_argument("--augmentation", type=str, default=None,
+                       choices=["none", "light", "standard", "production", "anti_overfitting"],
+                       help="Data augmentation level (overrides config-based default)")
+    parser.add_argument("--memory-efficient", action="store_true",
+                       help="Use memory-efficient trainer")
+    parser.add_argument("--backbone", type=str, default=None,
+                       choices=["resnet50", "resnet34", "efficientnet_b0"],
+                       help="Pretrained backbone for pix2pix-pretrained model")
+    
     
     args = parser.parse_args()
     
@@ -417,11 +446,16 @@ def main():
                 wandb_run.config.update(wandb_config)
         
         # Create data loaders
-        train_loader, val_loader = create_data_loaders(training_config, training_config.max_samples)
+        augmentation_level = args.augmentation if args.augmentation else args.config
+        train_loader, val_loader = create_data_loaders(training_config, augmentation_level, args.max_samples)
         
         # Initialize trainer
         logger.info("Initializing trainer...")
-        trainer = PokemonSpriteTrainer(model_config, training_config, wandb_run)
+        if args.memory_efficient:
+            logger.info("Using memory-efficient trainer with gradient accumulation and mixed precision")
+            trainer = MemoryEfficientPokemonTrainer(model_config, training_config, wandb_run)
+        else:
+            trainer = PokemonSpriteTrainer(model_config, training_config, wandb_run)
         
         # Start training
         start_time = time.time()

@@ -21,7 +21,7 @@ import json
 from dataclasses import asdict
 
 from core.logging_config import get_logger, TrainingProgressLogger, log_model_summary
-from core.models import create_model, count_parameters
+from core.models import create_model, count_parameters, count_total_parameters
 from config.settings import ModelConfig, TrainingConfig
 
 
@@ -84,8 +84,23 @@ class PokemonSpriteTrainer:
         if model_config.architecture == "unet":
             log_model_summary(self.models, (3, training_config.image_size, training_config.image_size))
         else:
-            total_params = count_parameters(self.models)
-            self.logger.info(f"Total trainable parameters: {total_params:,}")
+            total_params = count_total_parameters(self.models)
+            trainable_params = count_parameters(self.models)
+            frozen_params = total_params - trainable_params
+            
+            # For pretrained models, show detailed breakdown
+            if model_config.architecture == "pix2pix_pretrained":
+                self.logger.info(f"Total parameters: {total_params:,} (Trainable: {trainable_params:,}, Frozen: {frozen_params:,})")
+                if isinstance(self.models, dict):
+                    gen_total = sum(p.numel() for p in self.models["generator"].parameters())
+                    gen_trainable = sum(p.numel() for p in self.models["generator"].parameters() if p.requires_grad)
+                    gen_frozen = gen_total - gen_trainable
+                    disc_trainable = sum(p.numel() for p in self.models["discriminator"].parameters() if p.requires_grad)
+                    
+                    self.logger.info(f"Generator: {gen_total:,} total ({gen_trainable:,} trainable, {gen_frozen:,} frozen)")
+                    self.logger.info(f"Discriminator: {disc_trainable:,} trainable")
+            else:
+                self.logger.info(f"Total trainable parameters: {trainable_params:,}")
     
     def _setup_device(self) -> torch.device:
         """Setup compute device based on configuration."""
@@ -124,9 +139,15 @@ class PokemonSpriteTrainer:
         
         if isinstance(self.models, dict):
             # GAN architectures
-            if self.model_config.architecture == "pix2pix":
+            if self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
+                # For pretrained models, only optimize trainable parameters
+                if self.model_config.architecture == "pix2pix_pretrained":
+                    gen_params = [p for p in self.models["generator"].parameters() if p.requires_grad]
+                else:
+                    gen_params = self.models["generator"].parameters()
+                
                 optimizers["generator"] = optim.Adam(
-                    self.models["generator"].parameters(),
+                    gen_params,
                     lr=self.training_config.learning_rate,
                     betas=(self.training_config.beta1, self.training_config.beta2),
                     weight_decay=self.training_config.weight_decay
@@ -183,7 +204,7 @@ class PokemonSpriteTrainer:
             loss_functions["mse"] = nn.MSELoss()
             loss_functions["l1"] = nn.L1Loss()
             
-        elif self.model_config.architecture == "pix2pix":
+        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
             loss_functions["adversarial"] = nn.BCEWithLogitsLoss()
             loss_functions["l1"] = nn.L1Loss()
             
@@ -206,7 +227,7 @@ class PokemonSpriteTrainer:
         
         if self.model_config.architecture == "unet":
             epoch_losses = self._train_epoch_unet(train_loader, epoch)
-        elif self.model_config.architecture == "pix2pix":
+        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
             epoch_losses = self._train_epoch_pix2pix(train_loader, epoch)
         elif self.model_config.architecture == "cyclegan":
             epoch_losses = self._train_epoch_cyclegan(train_loader, epoch)
@@ -353,7 +374,7 @@ class PokemonSpriteTrainer:
         with torch.no_grad():
             if self.model_config.architecture == "unet":
                 val_losses = self._validate_unet(val_loader)
-            elif self.model_config.architecture == "pix2pix":
+            elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
                 val_losses = self._validate_pix2pix(val_loader)
             elif self.model_config.architecture == "cyclegan":
                 val_losses = {"val_loss": 0.0}  # Placeholder
@@ -495,11 +516,11 @@ class PokemonSpriteTrainer:
                 
                 # Update learning rate schedulers
                 for name, scheduler in self.schedulers.items():
-                    if "val_" in list(val_losses.keys())[0]:
+                    if val_losses and "val_" in list(val_losses.keys())[0]:
                         scheduler.step(list(val_losses.values())[0])
                 
                 # Check if this is the best model
-                is_best = self._is_best_model(val_losses)
+                is_best = self._is_best_model(val_losses) if val_losses else False
                 
                 self.progress_logger.end_epoch(epoch, self.training_config.epochs, 
                                              train_losses, val_losses)
@@ -533,6 +554,9 @@ class PokemonSpriteTrainer:
     
     def _is_best_model(self, val_losses: Dict[str, float]) -> bool:
         """Check if current model is the best so far."""
+        if not val_losses:
+            return False
+            
         # Use the first validation loss as the primary metric
         primary_metric = list(val_losses.keys())[0]
         current_value = val_losses[primary_metric]

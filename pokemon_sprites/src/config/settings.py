@@ -45,7 +45,13 @@ def get_data_root_dir() -> str:
     
     Returns:
         Absolute path to the pokemon_sprites/data directory.
+        Can be overridden with POKEMON_DATA_ROOT environment variable for testing.
     """
+    # Check for environment variable override (useful for testing)
+    env_data_root = os.getenv('POKEMON_DATA_ROOT')
+    if env_data_root:
+        return env_data_root
+    
     current_file = Path(__file__).resolve()
     project_root = current_file.parent.parent.parent
     data_dir = project_root / "data"

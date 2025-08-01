@@ -77,6 +77,91 @@
         "beta2": 0.999,
         "lambda_l1": 100.0
       }
+    },
+    "pix2pix-pixel-art": {
+      "name": "pix2pix-pixel-art",
+      "description": "Optimized Pix2Pix for pixel art generation (65M parameters) - Best quality for sprites",
+      "output_dir": "./models/pix2pix_pixel_art",
+      "architecture": "pix2pix",
+      "parameters": {
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 3,
+          "ngf": 128,
+          "n_blocks": 12,
+          "norm_layer": "instance",
+          "dropout": 0.3,
+          "use_attention": true
+        },
+        "discriminator": {
+          "input_channels": 6,
+          "ndf": 128,
+          "n_layers": 5,
+          "norm_layer": "instance",
+          "use_spectral_norm": true
+        },
+        "image_size": 128,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 150.0,
+        "lambda_perceptual": 0.15,
+        "lambda_pixel_art": 12.0
+      }
+    },
+    "pix2pix-regularized": {
+      "name": "pix2pix-regularized",
+      "description": "Regularized Pix2Pix to prevent overfitting (25M parameters) - Anti-overfitting design",
+      "output_dir": "./models/pix2pix_regularized",
+      "architecture": "pix2pix",
+      "parameters": {
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 3,
+          "ngf": 64,
+          "n_blocks": 8,
+          "norm_layer": "instance",
+          "dropout": 0.5
+        },
+        "discriminator": {
+          "input_channels": 6,
+          "ndf": 64,
+          "n_layers": 3,
+          "norm_layer": "instance",
+          "use_spectral_norm": true,
+          "label_smoothing": 0.1
+        },
+        "image_size": 64,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 50.0
+      }
+    },
+    "pix2pix-pretrained": {
+      "name": "pix2pix-pretrained",
+      "description": "Pix2Pix with pretrained backbone (15M trainable) - Uses pretrained ResNet50 features",
+      "output_dir": "./models/pix2pix_pretrained",
+      "architecture": "pix2pix_pretrained",
+      "parameters": {
+        "backbone": "resnet50",
+        "freeze_backbone": true,
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 3,
+          "backbone_features": 2048,
+          "decoder_features": [512, 256, 128, 64],
+          "dropout": 0.3
+        },
+        "discriminator": {
+          "input_channels": 6,
+          "ndf": 64,
+          "n_layers": 3,
+          "norm_layer": "instance"
+        },
+        "image_size": 64,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 50.0
+      }
     }
   },
   "unet_models": {
@@ -238,12 +323,122 @@
     },
     "production": {
       "epochs": 200,
-      "batch_size": 32,
-      "learning_rate": 0.0002,
+      "batch_size": 8,
+      "learning_rate": 0.0001,
       "eval_frequency": 10,
-      "save_frequency": 25,
+      "save_frequency": 20,
       "max_samples": null,
-      "description": "Full production training configuration"
+      "gradient_accumulation_steps": 4,
+      "mixed_precision": true,
+      "use_perceptual_loss": true,
+      "perceptual_weight": 0.2,
+      "use_anti_blur_loss": true,
+      "anti_blur_weight": 15.0,
+      "pixel_art_weight": 8.0,
+      "image_size": 128,
+      "description": "Production pixel art training with anti-blur losses and optimized parameters"
+    },
+    "pixel_art_optimal": {
+      "epochs": 250,
+      "batch_size": 6,
+      "learning_rate": 0.00008,
+      "eval_frequency": 8,
+      "save_frequency": 15,
+      "max_samples": null,
+      "gradient_accumulation_steps": 6,
+      "mixed_precision": true,
+      "use_perceptual_loss": true,
+      "perceptual_weight": 0.15,
+      "use_anti_blur_loss": true,
+      "anti_blur_weight": 20.0,
+      "pixel_art_weight": 12.0,
+      "image_size": 128,
+      "l1_weight": 150.0,
+      "scheduler": "cosine_warmup",
+      "warmup_epochs": 20,
+      "description": "Optimized specifically for high-quality pixel art generation with enhanced loss weighting"
+    },
+    "anti_overfitting": {
+      "epochs": 150,
+      "batch_size": 8,
+      "learning_rate": 0.0003,
+      "eval_frequency": 5,
+      "save_frequency": 10,
+      "max_samples": null,
+      "gradient_accumulation_steps": 2,
+      "mixed_precision": true,
+      "use_perceptual_loss": false,
+      "use_anti_blur_loss": true,
+      "anti_blur_weight": 10.0,
+      "pixel_art_weight": 5.0,
+      "image_size": 64,
+      "l1_weight": 50.0,
+      "scheduler": "reduce_on_plateau",
+      "weight_decay": 0.001,
+      "dropout_increase": 0.2,
+      "early_stopping_patience": 15,
+      "discriminator_steps": 2,
+      "generator_steps": 1,
+      "description": "Anti-overfitting configuration: smaller images, higher regularization, early stopping"
+    }
+  },
+  "augmentation_configs": {
+    "light": {
+      "horizontal_flip_p": 0.5,
+      "rotation_degrees": 0,
+      "color_jitter": {
+        "input": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.08, "hue": 0.03},
+        "target": {"brightness": 0.02, "contrast": 0.02, "saturation": 0.02, "hue": 0.01}
+      },
+      "noise": {"factor": 0.02, "p": 0.15},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "cutout": {"size_ratio": 32, "p": 0.1}
+    },
+    "standard": {
+      "horizontal_flip_p": 0.5,
+      "rotation_degrees": 5,
+      "color_jitter": {
+        "input": {"brightness": 0.12, "contrast": 0.12, "saturation": 0.12, "hue": 0.05},
+        "target": {"brightness": 0.04, "contrast": 0.04, "saturation": 0.04, "hue": 0.02}
+      },
+      "noise": {"factor": 0.04, "p": 0.2},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "cutout": {"size_ratio": 24, "p": 0.15}
+    },
+    "production": {
+      "horizontal_flip_p": 0.6,
+      "rotation_degrees": 8,
+      "color_jitter": {
+        "input": {"brightness": 0.15, "contrast": 0.15, "saturation": 0.15, "hue": 0.08},
+        "target": {"brightness": 0.06, "contrast": 0.06, "saturation": 0.06, "hue": 0.03}
+      },
+      "noise": {"factor": 0.06, "p": 0.25},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "cutout": {"size_ratio": 20, "p": 0.2}
+    },
+    "anti_overfitting": {
+      "horizontal_flip_p": 0.7,
+      "rotation_degrees": 12,
+      "color_jitter": {
+        "input": {"brightness": 0.2, "contrast": 0.2, "saturation": 0.2, "hue": 0.1},
+        "target": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.08, "hue": 0.04}
+      },
+      "noise": {"factor": 0.08, "p": 0.3},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "cutout": {"size_ratio": 16, "p": 0.25},
+      "elastic_transform": {"alpha": 50, "sigma": 5, "p": 0.15},
+      "random_perspective": {"distortion_scale": 0.2, "p": 0.2}
+    },
+    "none": {
+      "horizontal_flip_p": 0.0,
+      "rotation_degrees": 0,
+      "color_jitter": {
+        "input": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0},
+        "target": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
+      },
+      "noise": {"factor": 0.0, "p": 0.0},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "cutout": {"size_ratio": 0, "p": 0.0}
     }
   }
 }
