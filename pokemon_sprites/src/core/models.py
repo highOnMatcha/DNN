@@ -12,6 +12,13 @@ from typing import List, Optional, Tuple
 import math
 import torchvision.models as models
 
+try:
+    from diffusers import ControlNetModel
+    from transformers import CLIPVisionModel, CLIPImageProcessor
+    ADVANCED_MODELS_AVAILABLE = True
+except ImportError:
+    ADVANCED_MODELS_AVAILABLE = False
+
 
 # ======================================# ============================================================================
 # Pretrained backbone models
@@ -119,6 +126,212 @@ class PretrainedBackboneGenerator(nn.Module):
         x = self.final_layer(x)
         
         return x
+
+
+class ViTCLIPGenerator(nn.Module):
+    """Simplified CNN-based generator optimized for pixel art generation."""
+    
+    def __init__(self, vit_model: str = "vit_base_patch16_224", use_clip: bool = False,
+                 output_channels: int = 3, decoder_features: List[int] = None,
+                 dropout: float = 0.3):
+        super().__init__()
+        
+        if decoder_features is None:
+            decoder_features = [256, 128, 64, 32]
+        
+        print("Creating simplified pixel-art optimized generator...")
+        
+        # Simple but effective encoder for pixel art
+        self.encoder = nn.ModuleList([
+            # 64x64 -> 32x32
+            nn.Sequential(
+                nn.Conv2d(3, decoder_features[3], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[3]),
+                nn.LeakyReLU(0.2, inplace=True)
+            ),
+            # 32x32 -> 16x16  
+            nn.Sequential(
+                nn.Conv2d(decoder_features[3], decoder_features[2], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[2]),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Dropout2d(dropout * 0.5)
+            ),
+            # 16x16 -> 8x8
+            nn.Sequential(
+                nn.Conv2d(decoder_features[2], decoder_features[1], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[1]),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Dropout2d(dropout)
+            ),
+            # 8x8 -> 4x4
+            nn.Sequential(
+                nn.Conv2d(decoder_features[1], decoder_features[0], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[0]),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Dropout2d(dropout)
+            )
+        ])
+        
+        # Enhanced bottleneck with transformer attention for global feature learning
+        self.bottleneck = nn.Sequential(
+            ResBlock(decoder_features[0], "batch", dropout * 0.5),
+            TransformerBottleneck(
+                channels=decoder_features[0], 
+                num_heads=8, 
+                num_layers=4, 
+                dropout=dropout * 0.3,
+                spatial_size=4  # 4x4 spatial size at bottleneck
+            ),
+            nn.Dropout2d(dropout * 0.2),
+            ResBlock(decoder_features[0], "batch", dropout * 0.3),
+            SelfAttention(decoder_features[0]),
+            nn.Dropout2d(dropout * 0.1),
+            ResBlock(decoder_features[0], "batch", dropout * 0.2)
+        )
+        
+        # Decoder with skip connections
+        self.decoder = nn.ModuleList([
+            # 4x4 -> 8x8
+            nn.Sequential(
+                nn.ConvTranspose2d(decoder_features[0], decoder_features[1], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[1]),
+                nn.ReLU(inplace=True),
+                nn.Dropout2d(dropout * 0.5)
+            ),
+            # 8x8 -> 16x16 (with skip connection)
+            nn.Sequential(
+                nn.ConvTranspose2d(decoder_features[1] * 2, decoder_features[2], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[2]),
+                nn.ReLU(inplace=True),
+                nn.Dropout2d(dropout * 0.3)
+            ),
+            # 16x16 -> 32x32 (with skip connection)
+            nn.Sequential(
+                nn.ConvTranspose2d(decoder_features[2] * 2, decoder_features[3], 4, 2, 1),
+                nn.BatchNorm2d(decoder_features[3]),
+                nn.ReLU(inplace=True),
+                nn.Dropout2d(dropout * 0.1)
+            ),
+            # 32x32 -> 64x64 (with skip connection)
+            nn.Sequential(
+                nn.ConvTranspose2d(decoder_features[3] * 2, output_channels, 4, 2, 1),
+                nn.Tanh()
+            )
+        ])
+        
+        print(f"Pixel-art Generator created:")
+        print(f"  Encoder layers: {len(self.encoder)}")
+        print(f"  Decoder layers: {len(self.decoder)}")
+        print(f"  Features: {decoder_features}")
+        print(f"  Dropout: {dropout}")
+        
+    def forward(self, x):
+        # Store skip connections
+        skip_connections = []
+        
+        # Encoder
+        for layer in self.encoder:
+            x = layer(x)
+            skip_connections.append(x)
+        
+        # Bottleneck
+        x = self.bottleneck(x)
+        
+        # Decoder with skip connections (reverse order, excluding last)
+        skip_connections = skip_connections[:-1][::-1]
+        
+        for i, layer in enumerate(self.decoder):
+            x = layer(x)
+            # Add skip connection for all but the last layer
+            if i < len(self.decoder) - 1 and i < len(skip_connections):
+                skip = skip_connections[i]
+                if x.shape[2:] == skip.shape[2:]:
+                    x = torch.cat([x, skip], dim=1)
+        
+        return x
+
+
+class TransformerBottleneck(nn.Module):
+    """Transformer-based bottleneck for enhanced global feature learning."""
+    
+    def __init__(self, channels: int, num_heads: int = 8, num_layers: int = 4, 
+                 dropout: float = 0.1, spatial_size: int = 4):
+        super().__init__()
+        self.channels = channels
+        self.spatial_size = spatial_size
+        self.seq_length = spatial_size * spatial_size
+        
+        # Positional encoding for spatial positions
+        self.pos_encoding = nn.Parameter(torch.randn(1, self.seq_length, channels))
+        
+        # Transformer layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=channels,
+            nhead=num_heads,
+            dim_feedforward=channels * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Layer norm for input
+        self.input_norm = nn.LayerNorm(channels)
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x):
+        # x shape: [B, C, H, W] where H=W=spatial_size
+        B, C, H, W = x.shape
+        
+        # Flatten spatial dimensions: [B, C, H, W] -> [B, H*W, C]
+        x_flat = x.view(B, C, H * W).transpose(1, 2)
+        
+        # Add positional encoding
+        x_pos = x_flat + self.pos_encoding
+        x_pos = self.input_norm(x_pos)
+        x_pos = self.dropout(x_pos)
+        
+        # Apply transformer
+        x_transformed = self.transformer(x_pos)
+        
+        # Reshape back to spatial: [B, H*W, C] -> [B, C, H, W]
+        x_out = x_transformed.transpose(1, 2).view(B, C, H, W)
+        
+        # Residual connection
+        return x + x_out
+
+
+class SelfAttention(nn.Module):
+    """Self-attention mechanism for better feature learning."""
+    
+    def __init__(self, channels: int):
+        super().__init__()
+        self.channels = channels
+        self.query = nn.Conv2d(channels, channels // 8, 1)
+        self.key = nn.Conv2d(channels, channels // 8, 1)
+        self.value = nn.Conv2d(channels, channels, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+        
+    def forward(self, x):
+        batch_size, channels, height, width = x.size()
+        
+        # Generate query, key, value
+        q = self.query(x).view(batch_size, -1, height * width).permute(0, 2, 1)
+        k = self.key(x).view(batch_size, -1, height * width)
+        v = self.value(x).view(batch_size, -1, height * width)
+        
+        # Attention
+        attention = torch.bmm(q, k)
+        attention = F.softmax(attention, dim=2)
+        
+        # Apply attention
+        out = torch.bmm(v, attention.permute(0, 2, 1))
+        out = out.view(batch_size, channels, height, width)
+        
+        # Residual connection
+        return self.gamma * out + x
 
 
 # ============================================================================
@@ -398,31 +611,61 @@ class Pix2PixGenerator(nn.Module):
 
 
 class Pix2PixDiscriminator(nn.Module):
-    """Pix2Pix PatchGAN Discriminator."""
+    """Balanced PatchGAN Discriminator for better training stability."""
     
     def __init__(self, input_channels: int = 6, ndf: int = 64, n_layers: int = 3,
-                 norm_layer: str = "batch"):
+                 norm_layer: str = "batch", use_spectral_norm: bool = False):
         super().__init__()
         
-        layers = [
-            ConvBlock(input_channels, ndf, 4, 2, 1, "none", "leaky_relu", 0.0)
-        ]
+        layers = []
         
+        # First layer - no normalization
+        if use_spectral_norm:
+            layers.append(nn.utils.spectral_norm(nn.Conv2d(input_channels, ndf, 4, 2, 1)))
+        else:
+            layers.append(nn.Conv2d(input_channels, ndf, 4, 2, 1))
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
+        
+        # Subsequent layers
         nf_mult = 1
         for n in range(1, n_layers):
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
-            layers.append(
-                ConvBlock(ndf * nf_mult_prev, ndf * nf_mult, 4, 2, 1, norm_layer, "leaky_relu", 0.0)
-            )
+            
+            conv_layer = nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, 4, 2, 1)
+            if use_spectral_norm:
+                conv_layer = nn.utils.spectral_norm(conv_layer)
+            layers.append(conv_layer)
+            
+            # Add normalization
+            if norm_layer == "batch":
+                layers.append(nn.BatchNorm2d(ndf * nf_mult))
+            elif norm_layer == "instance":
+                layers.append(nn.InstanceNorm2d(ndf * nf_mult))
+            
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
         
+        # Final layers
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
-        layers.append(
-            ConvBlock(ndf * nf_mult_prev, ndf * nf_mult, 4, 1, 1, norm_layer, "leaky_relu", 0.0)
-        )
         
-        layers.append(nn.Conv2d(ndf * nf_mult, 1, 4, 1, 1))
+        conv_layer = nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, 4, 1, 1)
+        if use_spectral_norm:
+            conv_layer = nn.utils.spectral_norm(conv_layer)
+        layers.append(conv_layer)
+        
+        if norm_layer == "batch":
+            layers.append(nn.BatchNorm2d(ndf * nf_mult))
+        elif norm_layer == "instance":
+            layers.append(nn.InstanceNorm2d(ndf * nf_mult))
+        
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
+        
+        # Final prediction layer
+        final_layer = nn.Conv2d(ndf * nf_mult, 1, 4, 1, 1)
+        if use_spectral_norm:
+            final_layer = nn.utils.spectral_norm(final_layer)
+        layers.append(final_layer)
         
         self.model = nn.Sequential(*layers)
     
@@ -580,6 +823,24 @@ def create_model(config) -> nn.Module:
             input_channels=params.get("discriminator", {}).get("input_channels", 6),
             ndf=params.get("discriminator", {}).get("ndf", 64),
             n_layers=params.get("discriminator", {}).get("n_layers", 3),
+            norm_layer=params.get("discriminator", {}).get("norm_layer", "instance")
+        )
+        
+        return {"generator": generator, "discriminator": discriminator}
+    
+    elif architecture == "pix2pix_vit":
+        generator = ViTCLIPGenerator(
+            vit_model=params.get("generator", {}).get("vit_model", "vit_large_patch16_224"),
+            use_clip=params.get("generator", {}).get("use_clip", True),
+            output_channels=params.get("generator", {}).get("output_channels", 3),
+            decoder_features=params.get("generator", {}).get("decoder_features", [1024, 512, 256, 128]),
+            dropout=params.get("generator", {}).get("dropout", 0.2)
+        )
+        
+        discriminator = Pix2PixDiscriminator(
+            input_channels=params.get("discriminator", {}).get("input_channels", 6),
+            ndf=params.get("discriminator", {}).get("ndf", 64),
+            n_layers=params.get("discriminator", {}).get("n_layers", 4),
             norm_layer=params.get("discriminator", {}).get("norm_layer", "instance")
         )
         

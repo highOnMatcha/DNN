@@ -369,7 +369,7 @@ def main():
     parser.add_argument("--model", type=str, required=True,
                        help="Model configuration name")
     parser.add_argument("--config", type=str, default="development",
-                       choices=["test", "development", "production", "pixel_art_optimal", "anti_overfitting"],
+                       choices=["test", "development", "production", "pixel_art_optimal", "anti_overfitting", "enhanced_training"],
                        help="Training configuration type")
     parser.add_argument("--max-samples", type=int, default=None,
                        help="Maximum number of training samples (for testing)")

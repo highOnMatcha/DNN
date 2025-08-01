@@ -162,6 +162,61 @@
         "beta2": 0.999,
         "lambda_l1": 50.0
       }
+    },
+    "pix2pix-vit-transformer": {
+      "name": "pix2pix-vit-transformer",
+      "description": "CNN-Transformer hybrid with transformer bottleneck for global feature learning",
+      "output_dir": "./models/pix2pix_vit_transformer",
+      "architecture": "pix2pix_vit",
+      "parameters": {
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 3,
+          "vit_model": "transformer_cnn",
+          "use_clip": false,
+          "decoder_features": [512, 256, 128, 64],
+          "dropout": 0.2
+        },
+        "discriminator": {
+          "input_channels": 6,
+          "ndf": 64,
+          "n_layers": 4,
+          "norm_layer": "instance",
+          "use_spectral_norm": true
+        },
+        "image_size": 64,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 100.0,
+        "lambda_perceptual": 0.15
+      }
+    },
+    "pix2pix-vit": {
+      "name": "pix2pix-vit",
+      "description": "Simplified CNN-based generator optimized for pixel art generation",
+      "output_dir": "./models/pix2pix_vit",
+      "architecture": "pix2pix_vit",
+      "parameters": {
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 3,
+          "vit_model": "simple_cnn",
+          "use_clip": false,
+          "decoder_features": [256, 128, 64, 32],
+          "dropout": 0.5
+        },
+        "discriminator": {
+          "input_channels": 6,
+          "ndf": 32,
+          "n_layers": 3,
+          "norm_layer": "batch",
+          "use_spectral_norm": false
+        },
+        "image_size": 64,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 100.0
+      }
     }
   },
   "unet_models": {
@@ -359,27 +414,62 @@
       "description": "Optimized specifically for high-quality pixel art generation with enhanced loss weighting"
     },
     "anti_overfitting": {
-      "epochs": 150,
-      "batch_size": 8,
-      "learning_rate": 0.0003,
-      "eval_frequency": 5,
+      "epochs": 200,
+      "batch_size": 16,
+      "learning_rate": 0.0001,
+      "eval_frequency": 3,
       "save_frequency": 10,
       "max_samples": null,
-      "gradient_accumulation_steps": 2,
+      "gradient_accumulation_steps": 1,
       "mixed_precision": true,
       "use_perceptual_loss": false,
       "use_anti_blur_loss": true,
-      "anti_blur_weight": 10.0,
-      "pixel_art_weight": 5.0,
+      "anti_blur_weight": 1.5,
+      "pixel_art_weight": 0.5,
       "image_size": 64,
-      "l1_weight": 50.0,
-      "scheduler": "reduce_on_plateau",
-      "weight_decay": 0.001,
-      "dropout_increase": 0.2,
-      "early_stopping_patience": 15,
-      "discriminator_steps": 2,
+      "l1_weight": 100.0,
+      "scheduler": "cosine_annealing",
+      "cosine_t_max": 50,
+      "cosine_eta_min": 0.00001,
+      "weight_decay": 0.0005,
+      "dropout_increase": 0.4,
+      "early_stopping_patience": 25,
+      "discriminator_steps": 1,
       "generator_steps": 1,
-      "description": "Anti-overfitting configuration: smaller images, higher regularization, early stopping"
+      "discriminator_lr_multiplier": 0.3,
+      "gradient_clip_norm": 1.0,
+      "label_smoothing": 0.1,
+      "description": "Enhanced anti-overfitting: diverse augmentation, slower learning, better regularization"
+    },
+    "enhanced_training": {
+      "epochs": 300,
+      "batch_size": 12,
+      "learning_rate": 0.00008,
+      "eval_frequency": 5,
+      "save_frequency": 15,
+      "max_samples": null,
+      "gradient_accumulation_steps": 2,
+      "mixed_precision": true,
+      "use_perceptual_loss": true,
+      "perceptual_weight": 0.15,
+      "use_anti_blur_loss": true,
+      "anti_blur_weight": 2.0,
+      "pixel_art_weight": 1.0,
+      "image_size": 64,
+      "l1_weight": 100.0,
+      "scheduler": "cosine_annealing",
+      "cosine_t_max": 75,
+      "cosine_eta_min": 0.000005,
+      "weight_decay": 0.0001,
+      "dropout_increase": 0.3,
+      "early_stopping_patience": 40,
+      "discriminator_steps": 1,
+      "generator_steps": 1,
+      "discriminator_lr_multiplier": 0.5,
+      "gradient_clip_norm": 0.5,
+      "label_smoothing": 0.05,
+      "feature_matching_weight": 0.1,
+      "description": "Enhanced training with attention, perceptual loss, and better regularization for high-quality sprites"
     }
   },
   "augmentation_configs": {
@@ -417,17 +507,25 @@
       "cutout": {"size_ratio": 20, "p": 0.2}
     },
     "anti_overfitting": {
-      "horizontal_flip_p": 0.7,
-      "rotation_degrees": 12,
+      "horizontal_flip_p": 0.8,
+      "rotation_degrees": 8,
       "color_jitter": {
-        "input": {"brightness": 0.2, "contrast": 0.2, "saturation": 0.2, "hue": 0.1},
-        "target": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.08, "hue": 0.04}
+        "input": {"brightness": 0.2, "contrast": 0.2, "saturation": 0.25, "hue": 0.08},
+        "target": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.12, "hue": 0.03}
       },
-      "noise": {"factor": 0.08, "p": 0.3},
+      "noise": {"factor": 0.0, "p": 0.0},
       "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 16, "p": 0.25},
-      "elastic_transform": {"alpha": 50, "sigma": 5, "p": 0.15},
-      "random_perspective": {"distortion_scale": 0.2, "p": 0.2}
+      "cutout": {"size_ratio": 20, "p": 0.25},
+      "elastic_transform": {"alpha": 0, "sigma": 0, "p": 0.0},
+      "random_perspective": {"distortion_scale": 0.08, "p": 0.15},
+      "random_erasing": {"p": 0.0, "scale": [0.0, 0.0], "ratio": [0.0, 0.0]},
+      "mixup": {"alpha": 0.0, "p": 0.0},
+      "random_crop_scale": {"scale": [0.92, 1.0], "p": 0.3},
+      "color_shift": {"hue_range": [-10, 10], "p": 0.25},
+      "brightness_contrast": {"brightness_factor": [0.8, 1.2], "contrast_factor": [0.8, 1.2], "p": 0.4},
+      "channel_shuffle": {"p": 0.08},
+      "vertical_flip_p": 0.15,
+      "random_affine": {"degrees": 5, "translate": [0.05, 0.05], "scale": [0.95, 1.05], "p": 0.2}
     },
     "none": {
       "horizontal_flip_p": 0.0,

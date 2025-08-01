@@ -89,7 +89,7 @@ class PokemonSpriteTrainer:
             frozen_params = total_params - trainable_params
             
             # For pretrained models, show detailed breakdown
-            if model_config.architecture == "pix2pix_pretrained":
+            if model_config.architecture in ["pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
                 self.logger.info(f"Total parameters: {total_params:,} (Trainable: {trainable_params:,}, Frozen: {frozen_params:,})")
                 if isinstance(self.models, dict):
                     gen_total = sum(p.numel() for p in self.models["generator"].parameters())
@@ -139,9 +139,9 @@ class PokemonSpriteTrainer:
         
         if isinstance(self.models, dict):
             # GAN architectures
-            if self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
+            if self.model_config.architecture in ["pix2pix", "pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
                 # For pretrained models, only optimize trainable parameters
-                if self.model_config.architecture == "pix2pix_pretrained":
+                if self.model_config.architecture in ["pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
                     gen_params = [p for p in self.models["generator"].parameters() if p.requires_grad]
                 else:
                     gen_params = self.models["generator"].parameters()
@@ -204,7 +204,7 @@ class PokemonSpriteTrainer:
             loss_functions["mse"] = nn.MSELoss()
             loss_functions["l1"] = nn.L1Loss()
             
-        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
+        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
             loss_functions["adversarial"] = nn.BCEWithLogitsLoss()
             loss_functions["l1"] = nn.L1Loss()
             
@@ -227,7 +227,7 @@ class PokemonSpriteTrainer:
         
         if self.model_config.architecture == "unet":
             epoch_losses = self._train_epoch_unet(train_loader, epoch)
-        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
+        elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
             epoch_losses = self._train_epoch_pix2pix(train_loader, epoch)
         elif self.model_config.architecture == "cyclegan":
             epoch_losses = self._train_epoch_cyclegan(train_loader, epoch)
@@ -374,7 +374,7 @@ class PokemonSpriteTrainer:
         with torch.no_grad():
             if self.model_config.architecture == "unet":
                 val_losses = self._validate_unet(val_loader)
-            elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained"]:
+            elif self.model_config.architecture in ["pix2pix", "pix2pix_pretrained", "pix2pix_controlnet", "pix2pix_vit"]:
                 val_losses = self._validate_pix2pix(val_loader)
             elif self.model_config.architecture == "cyclegan":
                 val_losses = {"val_loss": 0.0}  # Placeholder
