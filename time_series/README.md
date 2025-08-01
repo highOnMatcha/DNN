@@ -71,7 +71,7 @@ python src/train.py --model lstm-small --symbol AAPL --config development
 python src/train.py --model lstm-medium --symbol GOOGL --config development --data-config enhanced
 
 # Multi-symbol training
-python src/train.py --model lstm-large --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --config production
+python src/train.py --model lstm-large --symbols AAPL --symbols GOOGL --symbols META --symbols TSLA --config production --data-config enhanced
 
 # Resume from checkpoint
 python src/train.py --resume ./models/lstm_small_AAPL/checkpoint-100
@@ -186,7 +186,8 @@ model_config = ModelConfig(
 
 ### Data Configurations
 - **basic**: OHLCV features only
-- **enhanced**: OHLCV + 6 technical indicators
+- **enhanced**: OHLCV + 6 technical indicators  
+- **large**: OHLCV + 12 technical indicators
 - **advanced**: OHLCV + 18 technical indicators + time features
 
 ## Performance Metrics
@@ -198,11 +199,17 @@ The pipeline evaluates models using multiple metrics:
 - **Mean Absolute Percentage Error (MAPE)**: Percentage-based error metric
 - **Directional Accuracy**: Percentage of correct price direction predictions
 - **Sharpe Ratio**: Risk-adjusted return for trading strategies
+- **R-squared (R²)**: Coefficient of determination, indicating the proportion of variance, or how good our predictions are.
 
 
-### Experiment Tracking
-```bash
-# Enable WandB tracking
-export WANDB_API_KEY=your_api_key
-python src/train.py --model lstm-medium --symbol AAPL --wandb
-```
+# Results and Visualizations
+
+This project was meaningful in showing that overfitting can be mitigated with proper feature engineering and model selection. The LSTM models with large count of parameters consistently underperformed compared to smaller models with enhanced features. The best results were achieved with the `lstm-small`, as is shown by the validation r-squared scores, matching the training r-squared scores:
+![alt text](readme_imgs/image.png)
+
+
+Some example stock predictions:
+- ![AAPL Predictions](readme_imgs/image-1.png)
+- ![GOOGL Predictions](readme_imgs/image-2.png)
+
+We are overall satisfied with the results for a small educational project. One key thing to note is that stock trends have changed significantly in the last few years, and a model should be retrained periodically to adapt to new market conditions, using recent data.

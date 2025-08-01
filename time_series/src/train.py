@@ -51,6 +51,7 @@ class StockTrainer:
                  data_config,
                  device: torch.device,
                  save_path: str,
+                 scaler=None,
                  use_wandb: bool = False):
         """
         Initialize trainer.
@@ -61,6 +62,7 @@ class StockTrainer:
             data_config: Data configuration
             device: Computing device
             save_path: Path to save model checkpoints
+            scaler: Data scaler for inverse transformation
             use_wandb: Whether to use WandB for experiment tracking
         """
         self.model_config = model_config
@@ -69,6 +71,7 @@ class StockTrainer:
         self.device = device
         self.save_path = Path(save_path)
         self.save_path.mkdir(parents=True, exist_ok=True)
+        self.scaler = scaler
         self.use_wandb = use_wandb
         
         # Training state
@@ -221,6 +224,7 @@ class StockTrainer:
             'model_config': self.model_config,
             'training_config': self.training_config,
             'data_config': self.data_config,
+            'scaler': self.scaler,
             'metrics': metrics,
             'best_val_r2': self.best_val_r2
         }
@@ -483,6 +487,7 @@ def main(model, symbol, symbols, config, data_config, resume, data_dir, output_d
                 data_config=data_config_obj,
                 device=device,
                 save_path=save_path,
+                scaler=processed_data.get('scaler'),
                 use_wandb=use_wandb
             )
             

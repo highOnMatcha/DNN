@@ -1,14 +1,48 @@
-"""LSTM model architectures for stock price prediction."""
+"""
+LSTM model architectures for stock price prediction.
+
+This module provides various LSTM-based neural network architectures
+optimized for time series forecasting, specifically stock price prediction.
+Includes basic LSTM, bidirectional LSTM, and attention-enhanced models.
+
+Author: Time Series Team
+Version: 1.0.0
+"""
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 import math
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Model architecture constants
+MIN_HIDDEN_SIZE = 8
+MAX_HIDDEN_SIZE = 2048
+MIN_LAYERS = 1
+MAX_LAYERS = 10
+MIN_DROPOUT = 0.0
+MAX_DROPOUT = 0.9
 
 
 class BasicLSTM(nn.Module):
-    """Basic LSTM model for stock price prediction."""
+    """
+    Basic LSTM model for stock price prediction.
+    
+    This class implements a standard LSTM architecture with configurable
+    layers, dropout, and bidirectional support. Suitable for most time
+    series forecasting tasks.
+    
+    Attributes:
+        input_size (int): Number of input features per timestep
+        hidden_size (int): Number of hidden units in LSTM layers
+        num_layers (int): Number of stacked LSTM layers
+        output_size (int): Number of output predictions
+        bidirectional (bool): Whether to use bidirectional LSTM
+        dropout_rate (float): Dropout probability for regularization
+    """
     
     def __init__(self, 
                  input_size: int,
@@ -16,15 +50,35 @@ class BasicLSTM(nn.Module):
                  num_layers: int,
                  output_size: int = 1,
                  dropout: float = 0.2,
-                 bidirectional: bool = False):
+                 bidirectional: bool = False) -> None:
+        """
+        Initialize BasicLSTM model.
+        
+        Args:
+            input_size: Number of input features per timestep
+            hidden_size: Number of hidden units in LSTM layers
+            num_layers: Number of stacked LSTM layers  
+            output_size: Number of output predictions (default: 1)
+            dropout: Dropout probability for regularization (default: 0.2)
+            bidirectional: Whether to use bidirectional LSTM (default: False)
+            
+        Raises:
+            ValueError: If any parameter is outside valid range
+        """
         super(BasicLSTM, self).__init__()
         
+        # Validate parameters
+        self._validate_parameters(input_size, hidden_size, num_layers, dropout)
+        
+        # Store configuration
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.output_size = output_size
         self.bidirectional = bidirectional
+        self.dropout_rate = dropout
         
+        # Build LSTM layers
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -34,7 +88,7 @@ class BasicLSTM(nn.Module):
             batch_first=True
         )
         
-        # Fully connected layers
+        # Build fully connected layers
         lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
         self.fc1 = nn.Linear(lstm_output_size, hidden_size // 2)
         self.dropout = nn.Dropout(dropout)
@@ -42,9 +96,43 @@ class BasicLSTM(nn.Module):
         
         # Initialize weights
         self._init_weights()
+        
+        logger.info(f"Initialized BasicLSTM with {self.count_parameters():,} parameters")
     
-    def _init_weights(self):
-        """Initialize model weights."""
+    def _validate_parameters(self, input_size: int, hidden_size: int, 
+                           num_layers: int, dropout: float) -> None:
+        """
+        Validate model parameters.
+        
+        Args:
+            input_size: Number of input features
+            hidden_size: Number of hidden units
+            num_layers: Number of LSTM layers
+            dropout: Dropout probability
+            
+        Raises:
+            ValueError: If any parameter is invalid
+        """
+        if not isinstance(input_size, int) or input_size <= 0:
+            raise ValueError(f"input_size must be a positive integer, got {input_size}")
+        
+        if not MIN_HIDDEN_SIZE <= hidden_size <= MAX_HIDDEN_SIZE:
+            raise ValueError(f"hidden_size must be between {MIN_HIDDEN_SIZE} and {MAX_HIDDEN_SIZE}")
+        
+        if not MIN_LAYERS <= num_layers <= MAX_LAYERS:
+            raise ValueError(f"num_layers must be between {MIN_LAYERS} and {MAX_LAYERS}")
+        
+        if not MIN_DROPOUT <= dropout <= MAX_DROPOUT:
+            raise ValueError(f"dropout must be between {MIN_DROPOUT} and {MAX_DROPOUT}")
+    
+    def _init_weights(self) -> None:
+        """
+        Initialize model weights using appropriate schemes.
+        
+        Uses Xavier uniform initialization for input weights,
+        orthogonal initialization for hidden weights, and
+        zero initialization for biases.
+        """
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
                 nn.init.xavier_uniform_(param.data)
@@ -53,6 +141,7 @@ class BasicLSTM(nn.Module):
             elif 'bias' in name:
                 param.data.fill_(0)
         
+        # Initialize fully connected layers
         nn.init.xavier_uniform_(self.fc1.weight)
         nn.init.xavier_uniform_(self.fc2.weight)
         self.fc1.bias.data.fill_(0)
@@ -60,31 +149,52 @@ class BasicLSTM(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass.
+        Forward pass through the model.
         
         Args:
             x: Input tensor of shape (batch_size, sequence_length, input_size)
             
         Returns:
-            Output tensor of shape (batch_size, output_size)
+            torch.Tensor: Output predictions of shape (batch_size, output_size)
+            
+        Raises:
+            ValueError: If input tensor has incorrect shape
         """
+        if x.dim() != 3:
+            raise ValueError(f"Expected 3D input tensor, got {x.dim()}D")
+        
+        batch_size, seq_len, features = x.shape
+        if features != self.input_size:
+            raise ValueError(f"Expected {self.input_size} features, got {features}")
+        
         # LSTM forward pass
         lstm_out, (hidden, cell) = self.lstm(x)
         
-        # Use the last output
+        # Extract final output based on architecture
         if self.bidirectional:
             # Concatenate the last output from both directions
-            last_output = torch.cat((lstm_out[:, -1, :self.hidden_size], 
-                                   lstm_out[:, 0, self.hidden_size:]), dim=1)
+            last_output = torch.cat((
+                lstm_out[:, -1, :self.hidden_size], 
+                lstm_out[:, 0, self.hidden_size:]
+            ), dim=1)
         else:
             last_output = lstm_out[:, -1, :]
         
-        # Fully connected layers
+        # Apply fully connected layers
         out = F.relu(self.fc1(last_output))
         out = self.dropout(out)
         out = self.fc2(out)
         
         return out
+    
+    def count_parameters(self) -> int:
+        """
+        Count the total number of trainable parameters.
+        
+        Returns:
+            int: Total number of trainable parameters
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
 class AttentionLSTM(nn.Module):
@@ -96,7 +206,7 @@ class AttentionLSTM(nn.Module):
                  num_layers: int,
                  output_size: int = 1,
                  dropout: float = 0.2,
-                 attention_size: int = None):
+                 attention_size: Optional[int] = None) -> None:
         """
         Initialize AttentionLSTM model.
         
@@ -254,8 +364,12 @@ class CNN_LSTM(nn.Module):
         """Initialize model weights."""
         nn.init.xavier_uniform_(self.conv1.weight)
         nn.init.xavier_uniform_(self.conv2.weight)
-        self.conv1.bias.data.fill_(0)
-        self.conv2.bias.data.fill_(0)
+        
+        # Initialize bias if it exists
+        if self.conv1.bias is not None:
+            self.conv1.bias.data.fill_(0)
+        if self.conv2.bias is not None:
+            self.conv2.bias.data.fill_(0)
         
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
