@@ -647,8 +647,9 @@ class TestDirectoryStructureIntegration(unittest.TestCase):
         models_dir = get_models_root_dir()
         self.assertTrue(Path(models_dir).exists())
 
-        # Test data directory
+        # Test data directory - create if it doesn't exist for CI environments
         data_dir = get_data_root_dir()
+        Path(data_dir).mkdir(parents=True, exist_ok=True)
         self.assertTrue(Path(data_dir).exists())
 
         # Create project structure
