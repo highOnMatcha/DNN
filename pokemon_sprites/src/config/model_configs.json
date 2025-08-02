@@ -125,6 +125,18 @@
     }
   },
   "augmentation_configs": {
+    "conservative": {
+      "horizontal_flip_p": 0.3,
+      "rotation_degrees": 0,
+      "color_jitter": {
+        "input": {"brightness": 0.03, "contrast": 0.02, "saturation": 0.02, "hue": 0.01},
+        "target": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
+      },
+      "cutout": {"size_ratio": 48, "p": 0.15},
+      "noise": {"factor": 0.0, "p": 0.0},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "random_affine": {"degrees": 0, "translate": [0.0, 0.0], "scale": [1.0, 1.0], "p": 0.0}
+    },
     "minimal": {
       "horizontal_flip_p": 0.3,
       "rotation_degrees": 0,
