@@ -1,355 +1,570 @@
 """
-Test Train Pipeline - Training Script Component Testing
+Advanced unit tests for train.py module focusing on main training pipeline functionality.
 
-Professional test suite for the main training pipeline components.
-Tests configuration loading, argument parsing, and training initialization.
+This module tests the comprehensive training pipeline including data loading,
+model initialization, training workflows, and command-line interface components.
 """
 
-import json
-import os
+import argparse
+import logging
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import mock_open, patch
+from unittest.mock import Mock, patch, MagicMock
 
 import torch
+from PIL import Image
 
-# Add the src directory to Python path
-current_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(current_dir / "src"))
+# Add src to path for imports
+src_path = Path(__file__).parent.parent.parent / "src"
+sys.path.insert(0, str(src_path))
 
-try:
-    from core.logging_config import get_logger
+from train import (
+    setup_wandb,
+    load_and_validate_configs,
+    create_data_loaders,
+    _setup_argument_parser,
+    _initialize_experiment_logging,
+    _setup_wandb_tracking,
+    _create_trainer,
+    _determine_max_generation_count,
+    find_missing_sprites,
+    generate_missing_sprites,
+    PokemonDataset,
+    TransferLearningManager,
+    DataEnhancer,
+    CurriculumTrainingManager,
+)
 
-    logger = get_logger(__name__)
-except ImportError:
-    import logging
-
-    logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
-class TestTrainingPipelineConfiguration(unittest.TestCase):
-    """Test configuration and initialization components of training pipeline."""
+def print_test_result(test_name: str, passed: bool, message: str = ""):
+    """Print colored test results."""
+    status = "✓ PASS" if passed else "✗ FAIL"
+    color = "\033[92m" if passed else "\033[91m"
+    print(f"{color}{status}\033[0m {test_name}: {message}")
+
+
+class TestTrainingPipelineComponents(unittest.TestCase):
+    """Test core training pipeline components."""
 
     def setUp(self):
         """Set up test environment."""
-        self.test_dir = tempfile.mkdtemp()
-        self.config_path = Path(self.test_dir) / "test_config.json"
-
-        # Create minimal valid configuration
-        self.test_config = {
-            "pix2pix_models": {
-                "test-model": {
-                    "description": "Test model for unit testing",
-                    "parameters": {
-                        "generator": {
-                            "input_channels": 3,
-                            "output_channels": 4,
-                            "ngf": 32,
-                            "n_blocks": 6,
-                        },
-                        "discriminator": {
-                            "input_channels": 7,
-                            "ndf": 32,
-                            "n_layers": 2,
-                        },
-                    },
-                }
-            },
-            "training_configurations": {
-                "test": {
-                    "batch_size": 2,
-                    "epochs": 2,
-                    "learning_rate": 0.0002,
-                    "beta1": 0.5,
-                    "lambda_L1": 100,
-                }
-            },
-        }
-
-        with open(self.config_path, "w") as f:
-            json.dump(self.test_config, f)
+        self.test_dir = Path(tempfile.mkdtemp())
 
     def tearDown(self):
-        """Clean up test environment."""
-        if os.path.exists(self.config_path):
-            os.remove(self.config_path)
-        os.rmdir(self.test_dir)
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
 
-    def test_argument_parser_creation(self):
-        """Test argument parser creation and basic functionality."""
-        logger.info("[TEST] Testing argument parser creation")
+    def test_argument_parser_setup(self):
+        """Test command-line argument parser setup."""
+        parser = _setup_argument_parser()
+        
+        # Verify parser is created
+        self.assertIsInstance(parser, argparse.ArgumentParser)
+        
+        # Test parsing valid arguments
+        test_args = ["--model", "test_model", "--config", "development"]
+        args = parser.parse_args(test_args)
+        
+        self.assertEqual(args.model, "test_model")
+        self.assertEqual(args.config, "development")
+        
+        print_test_result("test_argument_parser_setup", True,
+                         "Argument parser created and tested")
 
-        try:
-            import train
+    @patch('train.initialize_project_logging')
+    @patch('train.log_system_info')
+    def test_experiment_logging_initialization(self, mock_log_sys, mock_init_log):
+        """Test experiment logging initialization."""
+        # Create mock args
+        mock_args = Mock()
+        mock_args.model = "test_model"
+        mock_args.config = "development"
+        mock_args.log_level = "INFO"
+        
+        experiment_id = _initialize_experiment_logging(mock_args)
+        
+        # Verify experiment ID is generated
+        self.assertIsInstance(experiment_id, str)
+        self.assertIn("pokemon_sprites", experiment_id)
+        
+        # Verify logging functions were called
+        self.assertTrue(mock_init_log.called)
+        self.assertTrue(mock_log_sys.called)
+        
+        print_test_result("test_experiment_logging_initialization", True,
+                         f"Experiment ID: {experiment_id[:20]}...")
 
-            self.assertTrue(
-                hasattr(train, "create_argument_parser")
-                or hasattr(train, "parse_arguments")
-                or "argparse" in str(train.__dict__)
-            )
-            logger.info("[SUCCESS] Argument parser components accessible")
-        except ImportError as e:
-            logger.error(f"[FAIL] Cannot import train module: {e}")
-            self.fail(f"Cannot import train module: {e}")
+    @patch('train.setup_wandb')
+    def test_wandb_tracking_setup(self, mock_setup_wandb):
+        """Test WandB tracking setup."""
+        # Mock configurations
+        mock_training_config = Mock()
+        mock_training_config.wandb_log = True
+        mock_training_config.wandb_project = "test_project"
+        
+        mock_model_config = Mock()
+        mock_model_config.name = "test_model"
+        mock_model_config.architecture = "unet"
+        
+        mock_args = Mock()
+        mock_args.no_wandb = False
+        mock_args.model = "test_model"
+        mock_args.config = "development"
+        
+        # Mock return value
+        mock_setup_wandb.return_value = Mock()
+        
+        wandb_run = _setup_wandb_tracking(mock_args, mock_training_config, mock_model_config)
+        
+        # Verify WandB setup was called
+        self.assertTrue(mock_setup_wandb.called)
+        
+        print_test_result("test_wandb_tracking_setup", True,
+                         "WandB tracking setup tested")
 
-    @patch(
-        "sys.argv", ["train.py", "--model", "test-model", "--config", "test"]
-    )
-    def test_command_line_argument_handling(self):
-        """Test command line argument processing."""
-        logger.info("[TEST] Testing command line argument handling")
-
-        try:
-            import train
-
-            # Test that the module can handle basic arguments
-            # This tests the argument parsing setup without execution
-            self.assertIsNotNone(train)
-            logger.info("[SUCCESS] Command line arguments handled")
-        except Exception as e:
-            logger.error(f"[FAIL] Command line handling failed: {e}")
-            self.fail(f"Command line handling failed: {e}")
-
-    @patch("train.get_available_training_configs")
-    @patch("train.list_available_models")
-    def test_configuration_validation(self, mock_models, mock_configs):
-        """Test configuration validation logic."""
-        logger.info("[TEST] Testing configuration validation")
-
-        # Mock return values
-        mock_models.return_value = ["test-model", "other-model"]
-        mock_configs.return_value = ["test", "development", "production"]
-
-        try:
-            pass
-            # Test configuration functions are accessible
-            self.assertTrue(callable(mock_models))
-            self.assertTrue(callable(mock_configs))
-            logger.info("[SUCCESS] Configuration validation accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Configuration validation failed: {e}")
-            self.fail(f"Configuration validation failed: {e}")
-
-    def test_training_configuration_loading(self):
-        """Test training configuration loading from file."""
-        logger.info("[TEST] Testing training configuration loading")
-
-        try:
-            from config.settings import get_training_config
-
-            # Test configuration loading with mock data
-            with patch("config.settings.Path.exists", return_value=True):
-                with patch(
-                    "builtins.open",
-                    mock_open(read_data=json.dumps(self.test_config)),
-                ):
-                    # This tests the configuration loading mechanism
-                    self.assertIsNotNone(get_training_config)
-                    logger.info(
-                        "[SUCCESS] Training configuration loading works"
-                    )
-        except Exception as e:
-            logger.error(f"[FAIL] Configuration loading failed: {e}")
-            self.fail(f"Configuration loading failed: {e}")
-
-    def test_model_configuration_access(self):
-        """Test model configuration access and validation."""
-        logger.info("[TEST] Testing model configuration access")
-
-        try:
-            from config.settings import list_available_models
-
-            # Test that model configuration functions exist
-            self.assertTrue(callable(list_available_models))
-            logger.info("[SUCCESS] Model configuration access works")
-        except Exception as e:
-            logger.error(f"[FAIL] Model configuration access failed: {e}")
-            self.fail(f"Model configuration access failed: {e}")
+    def test_max_generation_count_determination(self):
+        """Test maximum generation count logic."""
+        # Mock args for different configurations
+        mock_args_test = Mock()
+        mock_args_test.max_generate = None
+        mock_args_test.config = "test"
+        
+        mock_args_dev = Mock()
+        mock_args_dev.max_generate = None
+        mock_args_dev.config = "development"
+        
+        mock_args_custom = Mock()
+        mock_args_custom.max_generate = 25
+        mock_args_custom.config = "production"
+        
+        # Mock missing artwork list
+        missing_artwork = ["artwork1", "artwork2", "artwork3"]
+        
+        # Test different scenarios
+        count_test = _determine_max_generation_count(mock_args_test, missing_artwork)
+        count_dev = _determine_max_generation_count(mock_args_dev, missing_artwork)
+        count_custom = _determine_max_generation_count(mock_args_custom, missing_artwork)
+        count_prod = _determine_max_generation_count(Mock(max_generate=None, config="production"), missing_artwork)
+        
+        self.assertEqual(count_test, 10)  # test config limit
+        self.assertEqual(count_dev, 50)   # development config limit
+        self.assertEqual(count_custom, 25)  # custom limit
+        self.assertEqual(count_prod, 3)   # production = all missing
+        
+        print_test_result("test_max_generation_count_determination", True,
+                         f"Test: {count_test}, Dev: {count_dev}, Custom: {count_custom}")
 
 
-class TestTrainingPipelineInitialization(unittest.TestCase):
-    """Test training pipeline initialization and setup."""
+class TestWandBIntegration(unittest.TestCase):
+    """Test WandB integration functionality."""
+
+    @patch.dict('os.environ', {'WANDB_API_KEY': 'test_key'})
+    @patch('train.wandb.login')
+    @patch('train.wandb.init')
+    def test_wandb_setup_success(self, mock_init, mock_login):
+        """Test successful WandB setup."""
+        # Mock successful login and init
+        mock_login.return_value = True
+        mock_run = Mock()
+        mock_init.return_value = mock_run
+        
+        result = setup_wandb(
+            project_name="test_project",
+            model_name="test_model",
+            config_type="test"
+        )
+        
+        # Verify WandB functions were called
+        self.assertTrue(mock_login.called)
+        self.assertTrue(mock_init.called)
+        self.assertEqual(result, mock_run)
+        
+        print_test_result("test_wandb_setup_success", True,
+                         "WandB setup successful path tested")
+
+    @patch.dict('os.environ', {}, clear=True)
+    @patch('train.wandb.init')
+    @patch('train.wandb.login')
+    @patch('train.logger')
+    def test_wandb_setup_no_api_key(self, mock_logger, mock_login, mock_init):
+        """Test WandB setup without API key."""
+        # Mock WandB to avoid actual initialization and Sentry scope issues
+        mock_login.return_value = False  # Simulate login failure
+        mock_init.return_value = None    # Return None on init failure
+        
+        result = setup_wandb(
+            project_name="test_project",
+            model_name="test_model",
+            config_type="test"
+        )
+        
+        # Should return None when login fails or no API key
+        self.assertIsNone(result)
+        
+        print_test_result("test_wandb_setup_no_api_key", True,
+                         "WandB setup handles missing API key scenario")
+
+    @patch.dict('os.environ', {'WANDB_API_KEY': 'test_key'})
+    @patch('train.wandb.login')
+    def test_wandb_setup_login_failure(self, mock_login):
+        """Test WandB setup with login failure."""
+        # Mock login failure
+        mock_login.side_effect = Exception("Login failed")
+        
+        result = setup_wandb(
+            project_name="test_project",
+            model_name="test_model",
+            config_type="test"
+        )
+        
+        # Should return None on failure
+        self.assertIsNone(result)
+        
+        print_test_result("test_wandb_setup_login_failure", True,
+                         "WandB setup handles login failure")
+
+
+class TestPokemonDataset(unittest.TestCase):
+    """Test PokemonDataset class functionality."""
 
     def setUp(self):
-        """Set up test environment."""
-        self.device = torch.device("cpu")  # Use CPU for testing
+        """Set up test dataset structure."""
+        self.test_dir = Path(tempfile.mkdtemp())
+        
+        # Create test data structure
+        self.train_input_dir = self.test_dir / "train" / "input"
+        self.train_target_dir = self.test_dir / "train" / "target"
+        self.val_input_dir = self.test_dir / "val" / "input"
+        self.val_target_dir = self.test_dir / "val" / "target"
+        
+        for dir_path in [self.train_input_dir, self.train_target_dir, 
+                        self.val_input_dir, self.val_target_dir]:
+            dir_path.mkdir(parents=True)
+        
+        # Create test images
+        for i in range(3):
+            # Training images
+            input_img = Image.new("RGB", (64, 64), (255, 0, 0))
+            target_img = Image.new("RGB", (64, 64), (0, 255, 0))
+            input_img.save(self.train_input_dir / f"pokemon_{i:03d}.png")
+            target_img.save(self.train_target_dir / f"pokemon_{i:03d}.png")
+            
+            # Validation images
+            input_img.save(self.val_input_dir / f"pokemon_{i:03d}.png")
+            target_img.save(self.val_target_dir / f"pokemon_{i:03d}.png")
 
-    def test_training_pipeline_imports(self):
-        """Test that all required imports are accessible."""
-        logger.info("[TEST] Testing training pipeline imports")
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
 
-        try:
-            import train
+    def test_pokemon_dataset_initialization(self):
+        """Test PokemonDataset initialization."""
+        dataset = PokemonDataset(
+            data_dir=str(self.test_dir),
+            split="train",
+            image_size=64,
+            augmentation_level="none"
+        )
+        
+        # Verify dataset properties
+        self.assertEqual(len(dataset), 3)
+        self.assertEqual(dataset.split, "train")
+        self.assertEqual(dataset.image_size, 64)
+        
+        print_test_result("test_pokemon_dataset_initialization", True,
+                         f"Dataset initialized with {len(dataset)} samples")
 
-            # Test core imports exist
-            required_modules = ["torch", "numpy", "PIL", "pathlib"]
-            for module in required_modules:
-                self.assertTrue(
-                    module in sys.modules
-                    or hasattr(train, module.replace(".", "_"))
-                )
-            logger.info("[SUCCESS] Training pipeline imports accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Training pipeline imports failed: {e}")
-            self.fail(f"Training pipeline imports failed: {e}")
+    def test_pokemon_dataset_getitem(self):
+        """Test PokemonDataset __getitem__ functionality."""
+        dataset = PokemonDataset(
+            data_dir=str(self.test_dir),
+            split="train",
+            image_size=64,
+            augmentation_level="none"
+        )
+        
+        # Test getting an item
+        input_tensor, target_tensor = dataset[0]
+        
+        # Verify tensor properties
+        self.assertIsInstance(input_tensor, torch.Tensor)
+        self.assertIsInstance(target_tensor, torch.Tensor)
+        self.assertEqual(input_tensor.shape, (3, 64, 64))
+        self.assertEqual(target_tensor.shape, (3, 64, 64))
+        
+        print_test_result("test_pokemon_dataset_getitem", True,
+                         f"Item shape: {input_tensor.shape}")
 
-    @patch("torch.cuda.is_available", return_value=False)
-    def test_device_configuration(self, mock_cuda):
-        """Test device configuration logic."""
-        logger.info("[TEST] Testing device configuration")
+    def test_pokemon_dataset_raw_sample(self):
+        """Test PokemonDataset raw sample access."""
+        dataset = PokemonDataset(
+            data_dir=str(self.test_dir),
+            split="train",
+            image_size=64,
+            augmentation_level="none"
+        )
+        
+        # Test getting raw samples
+        input_img, target_img = dataset.get_raw_sample(0)
+        
+        # Verify PIL Images
+        self.assertIsInstance(input_img, Image.Image)
+        self.assertIsInstance(target_img, Image.Image)
+        
+        print_test_result("test_pokemon_dataset_raw_sample", True,
+                         f"Raw sample size: {input_img.size}")
 
-        try:
-            import torch
-
-            device = torch.device(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
-            self.assertEqual(device.type, "cpu")
-            logger.info("[SUCCESS] Device configuration works")
-        except Exception as e:
-            logger.error(f"[FAIL] Device configuration failed: {e}")
-            self.fail(f"Device configuration failed: {e}")
-
-    def test_logging_initialization(self):
-        """Test logging system initialization."""
-        logger.info("[TEST] Testing logging initialization")
-
-        try:
-            from core.logging_config import (
-                get_logger,
-                initialize_project_logging,
-            )
-
-            # Test logger creation
-            test_logger = get_logger("test_training")
-            self.assertIsNotNone(test_logger)
-
-            # Test logging initialization function exists
-            self.assertTrue(callable(initialize_project_logging))
-            logger.info("[SUCCESS] Logging initialization works")
-        except Exception as e:
-            logger.error(f"[FAIL] Logging initialization failed: {e}")
-            self.fail(f"Logging initialization failed: {e}")
-
-    def test_wandb_configuration(self):
-        """Test Weights & Biases configuration setup."""
-        logger.info("[TEST] Testing wandb configuration")
-
-        try:
-            import wandb
-
-            # Test wandb is importable
-            self.assertIsNotNone(wandb)
-
-            # Test wandb configuration functions
-            self.assertTrue(hasattr(wandb, "init"))
-            self.assertTrue(hasattr(wandb, "config"))
-            logger.info("[SUCCESS] Wandb configuration accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Wandb configuration failed: {e}")
-            self.fail(f"Wandb configuration failed: {e}")
-
-
-class TestTrainingPipelineDataHandling(unittest.TestCase):
-    """Test data handling components of training pipeline."""
-
-    def test_dataset_initialization_components(self):
-        """Test dataset initialization component accessibility."""
-        logger.info("[TEST] Testing dataset initialization components")
-
-        try:
-            from torch.utils.data import DataLoader, Dataset
-            from torchvision import transforms
-
-            # Test core data components are accessible
-            self.assertTrue(callable(DataLoader))
-            self.assertTrue(Dataset is not None)
-            self.assertTrue(transforms is not None)
-            logger.info("[SUCCESS] Dataset components accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Dataset components failed: {e}")
-            self.fail(f"Dataset components failed: {e}")
-
-    def test_data_augmentation_integration(self):
-        """Test data augmentation integration."""
-        logger.info("[TEST] Testing data augmentation integration")
-
-        try:
-            from data.augmentation import get_augmentation_config
-
-            # Test augmentation configuration access
-            self.assertTrue(callable(get_augmentation_config))
-            logger.info("[SUCCESS] Data augmentation integration works")
-        except Exception as e:
-            logger.error(f"[FAIL] Data augmentation integration failed: {e}")
-            self.fail(f"Data augmentation integration failed: {e}")
-
-    def test_data_loader_creation_components(self):
-        """Test data loader creation component accessibility."""
-        logger.info("[TEST] Testing data loader creation components")
-
-        try:
-            from data.loaders import create_train_val_split, find_valid_pairs
-
-            # Test data loader functions exist
-            self.assertTrue(callable(find_valid_pairs))
-            self.assertTrue(callable(create_train_val_split))
-            logger.info("[SUCCESS] Data loader components accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Data loader components failed: {e}")
-            self.fail(f"Data loader components failed: {e}")
+    def test_pokemon_dataset_validation_split(self):
+        """Test PokemonDataset validation split."""
+        val_dataset = PokemonDataset(
+            data_dir=str(self.test_dir),
+            split="val",
+            image_size=32,
+            augmentation_level="none"
+        )
+        
+        self.assertEqual(val_dataset.split, "val")
+        self.assertEqual(len(val_dataset), 3)
+        
+        print_test_result("test_pokemon_dataset_validation_split", True,
+                         f"Validation dataset: {len(val_dataset)} samples")
 
 
-class TestTrainingPipelineModelHandling(unittest.TestCase):
-    """Test model handling components of training pipeline."""
+class TestDataEnhancer(unittest.TestCase):
+    """Test DataEnhancer functionality."""
 
-    def test_model_creation_components(self):
-        """Test model creation component accessibility."""
-        logger.info("[TEST] Testing model creation components")
+    def setUp(self):
+        """Set up test environment for data enhancement."""
+        self.enhancer = DataEnhancer(target_size=128)
 
-        try:
-            from core.models import Pix2PixDiscriminator, Pix2PixGenerator
+    def test_data_enhancer_initialization(self):
+        """Test DataEnhancer initialization."""
+        self.assertEqual(self.enhancer.target_size, 128)
+        print_test_result("test_data_enhancer_initialization", True,
+                         f"Target size: {self.enhancer.target_size}")
 
-            # Test model classes are accessible
-            self.assertTrue(callable(Pix2PixGenerator))
-            self.assertTrue(callable(Pix2PixDiscriminator))
-            logger.info("[SUCCESS] Model creation components accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Model creation components failed: {e}")
-            self.fail(f"Model creation components failed: {e}")
+    def test_extract_dominant_colors(self):
+        """Test dominant color extraction."""
+        # Create test image array
+        test_image = torch.randint(0, 255, (32, 32, 3), dtype=torch.uint8).numpy()
+        
+        colors = self.enhancer._extract_dominant_colors(test_image, n_colors=5)
+        
+        # Verify colors are extracted
+        self.assertIsInstance(colors, list)
+        self.assertLessEqual(len(colors), 5)
+        
+        # Verify colors are RGB tuples
+        for color in colors:
+            self.assertIsInstance(color, tuple)
+            self.assertEqual(len(color), 3)
+        
+        print_test_result("test_extract_dominant_colors", True,
+                         f"Extracted {len(colors)} colors")
 
-    def test_trainer_integration(self):
-        """Test trainer integration component accessibility."""
-        logger.info("[TEST] Testing trainer integration")
+    def test_color_palette_swap(self):
+        """Test color palette swapping."""
+        # Create test images - simple single color images to test the fix
+        source_img = Image.new("RGB", (64, 64), (255, 0, 0))
+        target_img = Image.new("RGB", (64, 64), (0, 255, 0))
+        
+        # Test color palette swap - this should no longer generate clustering warnings
+        result_img = self.enhancer.color_palette_swap(source_img, target_img)
+        
+        # Verify result is PIL Image
+        self.assertIsInstance(result_img, Image.Image)
+        self.assertEqual(result_img.size, (64, 64))
+        
+        print_test_result("test_color_palette_swap", True,
+                         f"Color swap result size: {result_img.size}")
 
-        try:
-            from core.trainer import PokemonSpriteTrainer
+    def test_remap_colors(self):
+        """Test color remapping functionality."""
+        # Create test image array
+        test_image = torch.randint(0, 255, (32, 32, 3), dtype=torch.uint8).numpy()
+        target_colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+        
+        # Test color remapping
+        result = self.enhancer._remap_colors(test_image, target_colors)
+        
+        # Verify result shape matches input
+        self.assertEqual(result.shape, test_image.shape)
+        self.assertIsInstance(result, type(test_image))
+        
+        print_test_result("test_remap_colors", True,
+                         f"Remapped image shape: {result.shape}")
 
-            # Test trainer class is accessible
-            self.assertTrue(callable(PokemonSpriteTrainer))
-            logger.info("[SUCCESS] Trainer integration accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Trainer integration failed: {e}")
-            self.fail(f"Trainer integration failed: {e}")
 
-    def test_transfer_learning_components(self):
-        """Test transfer learning component setup."""
-        logger.info("[TEST] Testing transfer learning components")
+class TestTransferLearningManager(unittest.TestCase):
+    """Test TransferLearningManager functionality."""
 
-        try:
-            import torch.nn as nn
-            import torchvision.models as models
+    def setUp(self):
+        """Set up transfer learning test environment."""
+        self.device = torch.device("cpu")
+        self.manager = TransferLearningManager(self.device)
+        self.test_dir = Path(tempfile.mkdtemp())
 
-            # Test transfer learning components are accessible
-            self.assertTrue(hasattr(models, "resnet50"))
-            self.assertTrue(hasattr(nn, "Module"))
-            logger.info("[SUCCESS] Transfer learning components accessible")
-        except Exception as e:
-            logger.error(f"[FAIL] Transfer learning components failed: {e}")
-            self.fail(f"Transfer learning components failed: {e}")
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    def test_transfer_learning_manager_initialization(self):
+        """Test TransferLearningManager initialization."""
+        self.assertEqual(self.manager.device, self.device)
+        self.assertIsInstance(self.manager.pretrained_urls, dict)
+        self.assertGreater(len(self.manager.pretrained_urls), 0)
+        
+        print_test_result("test_transfer_learning_manager_initialization", True,
+                         f"Available pretrained models: {len(self.manager.pretrained_urls)}")
+
+    def test_load_pretrained_weights_nonexistent(self):
+        """Test loading weights from nonexistent file."""
+        # Create simple model
+        model = torch.nn.Linear(10, 5)
+        
+        # Test with nonexistent file
+        nonexistent_path = self.test_dir / "nonexistent.pth"
+        result = self.manager.load_pretrained_weights(model, nonexistent_path)
+        
+        # Should return False for nonexistent file
+        self.assertFalse(result)
+        
+        print_test_result("test_load_pretrained_weights_nonexistent", True,
+                         "Handled nonexistent pretrained weights file")
+
+    def test_load_pretrained_weights_valid(self):
+        """Test loading weights from valid file."""
+        # Create simple model
+        model = torch.nn.Linear(10, 5)
+        
+        # Create test checkpoint
+        checkpoint_path = self.test_dir / "test_checkpoint.pth"
+        test_state_dict = {
+            "weight": torch.randn(5, 10),
+            "bias": torch.randn(5)
+        }
+        torch.save({"generator": test_state_dict}, checkpoint_path)
+        
+        # Test loading
+        result = self.manager.load_pretrained_weights(model, checkpoint_path)
+        
+        # Should return True for successful loading
+        self.assertTrue(result)
+        
+        print_test_result("test_load_pretrained_weights_valid", True,
+                         "Successfully loaded compatible pretrained weights")
+
+
+class TestCurriculumTrainingManager(unittest.TestCase):
+    """Test CurriculumTrainingManager functionality."""
+
+    def setUp(self):
+        """Set up curriculum training test environment."""
+        self.test_dir = Path(tempfile.mkdtemp())
+        self.config = {"augmentation": "standard"}
+        self.manager = CurriculumTrainingManager(self.config, self.test_dir)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    def test_curriculum_manager_initialization(self):
+        """Test CurriculumTrainingManager initialization."""
+        self.assertEqual(self.manager.config, self.config)
+        self.assertEqual(self.manager.data_dir, self.test_dir)
+        self.assertEqual(self.manager.input_scales, [128, 192, 256])
+        self.assertEqual(self.manager.current_scale_idx, 0)
+        
+        print_test_result("test_curriculum_manager_initialization", True,
+                         f"Scales: {self.manager.input_scales}")
+
+    def test_curriculum_advancement(self):
+        """Test curriculum advancement logic."""
+        # Initially at first scale
+        initial_scale = self.manager.input_scales[self.manager.current_scale_idx]
+        self.assertEqual(initial_scale, 128)
+        
+        # Advance curriculum
+        can_advance_1 = self.manager.advance_curriculum()
+        self.assertTrue(can_advance_1)
+        self.assertEqual(self.manager.current_scale_idx, 1)
+        
+        # Advance again
+        can_advance_2 = self.manager.advance_curriculum()
+        self.assertTrue(can_advance_2)
+        self.assertEqual(self.manager.current_scale_idx, 2)
+        
+        # Try to advance beyond last scale
+        can_advance_3 = self.manager.advance_curriculum()
+        self.assertFalse(can_advance_3)
+        self.assertEqual(self.manager.current_scale_idx, 2)  # Should stay at last
+        
+        print_test_result("test_curriculum_advancement", True,
+                         f"Advanced through {len(self.manager.input_scales)} scales")
+
+
+class TestMissingSpriteFunctionality(unittest.TestCase):
+    """Test missing sprite detection and generation functionality."""
+
+    def setUp(self):
+        """Set up test environment for sprite functionality."""
+        self.test_dir = Path(tempfile.mkdtemp())
+        
+        # Create test artwork directory
+        self.artwork_dir = self.test_dir / "artwork"
+        self.artwork_dir.mkdir()
+        
+        # Create test sprite directory
+        self.sprite_dir = self.test_dir / "sprites"
+        self.sprite_dir.mkdir()
+        
+        # Create test artwork files
+        for i in range(1, 6):  # 5 artwork files
+            artwork_img = Image.new("RGB", (256, 256), (255, 0, 0))
+            artwork_img.save(self.artwork_dir / f"pokemon_{i:03d}_artwork.png")
+        
+        # Create sprite files for only some Pokemon (1, 3, 5)
+        for i in [1, 3, 5]:
+            sprite_img = Image.new("RGB", (64, 64), (0, 255, 0))
+            sprite_img.save(self.sprite_dir / f"pokemon_{i:03d}_bw.png")
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    def test_find_missing_sprites(self):
+        """Test finding Pokemon artwork without corresponding sprites."""
+        missing_sprites = find_missing_sprites(self.artwork_dir, self.sprite_dir)
+        
+        # Should find artwork files 002 and 004 as missing sprites
+        self.assertIsInstance(missing_sprites, list)
+        self.assertEqual(len(missing_sprites), 2)  # Pokemon 2 and 4 should be missing
+        
+        # Verify missing files are correct
+        missing_ids = []
+        for missing_file in missing_sprites:
+            # Extract ID from filename
+            if "_artwork" in missing_file.stem:
+                pokemon_id = missing_file.stem.split("_")[1]
+                missing_ids.append(pokemon_id)
+        
+        self.assertIn("002", missing_ids)
+        self.assertIn("004", missing_ids)
+        
+        print_test_result("test_find_missing_sprites", True,
+                         f"Found {len(missing_sprites)} missing sprites")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    # Run tests with detailed output
+    unittest.main(verbosity=2)
