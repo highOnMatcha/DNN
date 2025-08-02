@@ -126,8 +126,8 @@ class TestOptimizers(unittest.TestCase):
                 lr_finder = LearningRateFinder(mock_generator, mock_discriminator, device='cpu')
                 self.assertIsNotNone(lr_finder)
             
-            # Test BatchSizeOptimizer
-            batch_optimizer = BatchSizeOptimizer(mock_generator, mock_discriminator)
+            # Test BatchSizeOptimizer (force CPU for CI environment)
+            batch_optimizer = BatchSizeOptimizer(mock_generator, mock_discriminator, device='cpu')
             self.assertIsNotNone(batch_optimizer)
             
             # Test TrainingScheduleOptimizer  
