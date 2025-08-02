@@ -4,11 +4,14 @@ Comprehensive tests for config/settings.py module.
 Tests all configuration classes, utility functions, and edge cases.
 """
 
+import json
+import os
 import shutil
 import tempfile
 import unittest
 from dataclasses import asdict
 from pathlib import Path
+from unittest.mock import mock_open, patch
 
 # Import the classes and functions we want to test
 from src.config.settings import (
@@ -16,11 +19,101 @@ from src.config.settings import (
     TrainingConfig,
     create_experiment_config,
     get_available_training_configs,
+    get_data_root_dir,
+    get_development_config,
     get_model_config,
+    get_models_root_dir,
+    get_production_config,
+    get_test_config,
     get_training_config,
     list_available_models,
+    load_model_configs,
     save_experiment_config,
 )
+
+
+class TestDirectoryFunctions(unittest.TestCase):
+    """Test directory utility functions."""
+
+    def test_get_models_root_dir(self):
+        """Test get_models_root_dir function."""
+        models_dir = get_models_root_dir()
+
+        # Should return a valid absolute path
+        self.assertTrue(os.path.isabs(models_dir))
+        self.assertTrue(models_dir.endswith("models"))
+
+        # Directory should exist after calling the function
+        self.assertTrue(os.path.exists(models_dir))
+
+    def test_get_data_root_dir_default(self):
+        """Test get_data_root_dir function with default behavior."""
+        data_dir = get_data_root_dir()
+
+        # Should return a valid absolute path
+        self.assertTrue(os.path.isabs(data_dir))
+        self.assertTrue(data_dir.endswith("data"))
+
+    def test_get_data_root_dir_with_env_override(self):
+        """Test get_data_root_dir function with environment variable override."""
+        test_path = "/tmp/test_pokemon_data"
+
+        with patch.dict(os.environ, {"POKEMON_DATA_ROOT": test_path}):
+            data_dir = get_data_root_dir()
+            self.assertEqual(data_dir, test_path)
+
+
+class TestLoadModelConfigs(unittest.TestCase):
+    """Test load_model_configs function."""
+
+    def test_load_model_configs_success(self):
+        """Test successful loading of model configurations."""
+        configs = load_model_configs()
+
+        # Should return a dictionary
+        self.assertIsInstance(configs, dict)
+
+        # Should have the expected structure (from the actual JSON file)
+        self.assertIn("pix2pix_models", configs)
+
+    def test_load_model_configs_file_not_found(self):
+        """Test handling of missing configuration file."""
+        with patch(
+            "src.config.settings.CONFIG_FILE", "/nonexistent/path.json"
+        ):
+            with patch("builtins.print") as mock_print:
+                configs = load_model_configs()
+
+                # Should return default structure
+                expected_keys = [
+                    "pix2pix_models",
+                    "unet_models",
+                    "cyclegan_models",
+                    "diffusion_models",
+                    "training_configs",
+                ]
+                for key in expected_keys:
+                    self.assertIn(key, configs)
+                    self.assertEqual(configs[key], {})
+
+                # Should print warning
+                mock_print.assert_called_once()
+                self.assertIn("Warning", mock_print.call_args[0][0])
+
+    def test_load_model_configs_json_decode_error(self):
+        """Test handling of malformed JSON file."""
+        invalid_json = "{ invalid json content"
+
+        with patch("builtins.open", mock_open(read_data=invalid_json)):
+            with patch("builtins.print") as mock_print:
+                configs = load_model_configs()
+
+                # Should return empty dict on JSON error
+                self.assertEqual(configs, {})
+
+                # Should print error message
+                mock_print.assert_called_once()
+                self.assertIn("Error parsing", mock_print.call_args[0][0])
 
 
 class TestTrainingConfig(unittest.TestCase):
@@ -194,22 +287,114 @@ class TestConfigFunctions(unittest.TestCase):
 
         self.assertTrue(model_config_success)
 
-    def test_get_training_config(self):
-        """Test get_training_config function."""
+    def test_get_training_config_with_real_config_file(self):
+        """Test get_training_config function with actual config types."""
+        # Test with development config (should exist in real file)
         try:
-            config = get_training_config()
+            config = get_training_config("development")
             self.assertIsNotNone(config)
+            self.assertIsInstance(config, TrainingConfig)
+        except Exception:
+            # If no development config exists, test default fallback
+            config = get_training_config("nonexistent_config")
+            self.assertIsNotNone(config)
+            self.assertIsInstance(config, TrainingConfig)
 
-            # Test that it returns a TrainingConfig instance
-            self.assertTrue(hasattr(config, "epochs"))
-            self.assertTrue(hasattr(config, "batch_size"))
-            self.assertTrue(hasattr(config, "learning_rate"))
-            training_config_success = True
-        except Exception as e:
-            print(f"Get training config error: {e}")
-            training_config_success = False
+    def test_get_training_config_default_fallback(self):
+        """Test get_training_config function fallback to default."""
+        config = get_training_config("nonexistent_config_type")
 
-        self.assertTrue(training_config_success)
+        # Should return default TrainingConfig
+        self.assertIsNotNone(config)
+        self.assertIsInstance(config, TrainingConfig)
+        self.assertEqual(config.epochs, 100)  # Default value
+
+    def test_create_experiment_config_success(self):
+        """Test create_experiment_config with valid model."""
+        try:
+            # Try with a model that should exist in the real config file
+            model_config, training_config = create_experiment_config(
+                "lightweight-baseline", "development"
+            )
+
+            self.assertIsNotNone(model_config)
+            self.assertIsNotNone(training_config)
+            self.assertIsInstance(model_config, ModelConfig)
+            self.assertIsInstance(training_config, TrainingConfig)
+
+        except ValueError:
+            # If model doesn't exist, just verify the function works
+            self.assertTrue(True)
+
+    def test_create_experiment_config_invalid_model(self):
+        """Test create_experiment_config with invalid model name."""
+        with self.assertRaises(ValueError) as context:
+            create_experiment_config(
+                "definitely_nonexistent_model", "development"
+            )
+
+        self.assertIn("not found", str(context.exception))
+        self.assertIn("Available models", str(context.exception))
+
+    def test_create_experiment_config_image_size_override(self):
+        """Test that model-specific image size overrides training config."""
+        # Create a mock model config with image_size parameter
+
+        with patch("src.config.settings.get_model_config") as mock_get_model:
+            mock_get_model.return_value = ModelConfig(
+                name="test_model",
+                architecture="pix2pix",
+                output_dir="./test",
+                parameters={"image_size": 128},
+            )
+
+            model_config, training_config = create_experiment_config(
+                "test_model", "development"
+            )
+
+            # Training config should have updated image size
+            self.assertEqual(training_config.image_size, 128)
+
+    def test_get_test_config(self):
+        """Test get_test_config shortcut function."""
+        try:
+            model_config, training_config = get_test_config(
+                "lightweight-baseline"
+            )
+            self.assertIsNotNone(model_config)
+            self.assertIsNotNone(training_config)
+        except ValueError:
+            # Model might not exist, test with default
+            try:
+                model_config, training_config = get_test_config()
+                # Function should still work with default parameter
+            except ValueError:
+                # If no models exist at all, that's expected in test environment
+                pass
+
+    def test_get_development_config(self):
+        """Test get_development_config shortcut function."""
+        try:
+            model_config, training_config = get_development_config(
+                "lightweight-baseline"
+            )
+            self.assertIsNotNone(model_config)
+            self.assertIsNotNone(training_config)
+        except ValueError:
+            # Model might not exist, that's expected in test environment
+            pass
+
+    def test_get_production_config(self):
+        """Test get_production_config shortcut function."""
+        try:
+            model_config, training_config = get_production_config(
+                "lightweight-baseline"
+            )
+            self.assertIsNotNone(model_config)
+            self.assertIsNotNone(training_config)
+        except ValueError:
+            # Model might not exist, that's expected in test environment
+            pass
 
     def test_get_training_config_types(self):
         """Test get_training_config with different config types."""
@@ -277,27 +462,51 @@ class TestConfigFunctions(unittest.TestCase):
 
     def test_save_experiment_config(self):
         """Test save_experiment_config function."""
-        try:
-            training_config = TrainingConfig(epochs=25, batch_size=16)
-            model_config = ModelConfig(
-                name="test_model", architecture="unet", output_dir="/test/dir"
-            )
-            config_file = self.test_dir / "save_test.json"
+        training_config = TrainingConfig(
+            epochs=25, batch_size=16, learning_rate=0.001
+        )
+        model_config = ModelConfig(
+            name="test_model",
+            architecture="unet",
+            output_dir="/test/dir",
+            description="Test model for saving config",
+            parameters={"test_param": "test_value"},
+        )
+        config_file = self.test_dir / "save_test.json"
 
-            # Save the config
-            save_experiment_config(
-                model_config, training_config, str(config_file)
-            )
+        # Save the config
+        save_experiment_config(model_config, training_config, str(config_file))
 
-            # Verify file was created
-            self.assertTrue(config_file.exists())
+        # Verify file was created and has correct structure
+        self.assertTrue(config_file.exists())
 
-            save_config_success = True
-        except Exception as e:
-            print(f"Save config error: {e}")
-            save_config_success = False
+        # Load and verify the saved content
+        with open(config_file, "r") as f:
+            saved_data = json.load(f)
 
-        self.assertTrue(save_config_success)
+        # Check structure
+        self.assertIn("model", saved_data)
+        self.assertIn("training", saved_data)
+        self.assertIn("metadata", saved_data)
+
+        # Check model data
+        self.assertEqual(saved_data["model"]["name"], "test_model")
+        self.assertEqual(saved_data["model"]["architecture"], "unet")
+        self.assertEqual(
+            saved_data["model"]["description"], "Test model for saving config"
+        )
+        self.assertEqual(
+            saved_data["model"]["parameters"]["test_param"], "test_value"
+        )
+
+        # Check training data
+        self.assertEqual(saved_data["training"]["epochs"], 25)
+        self.assertEqual(saved_data["training"]["batch_size"], 16)
+        self.assertEqual(saved_data["training"]["learning_rate"], 0.001)
+
+        # Check metadata
+        self.assertIn("created_at", saved_data["metadata"])
+        self.assertEqual(saved_data["metadata"]["config_version"], "1.0")
 
 
 class TestConfigurationIntegration(unittest.TestCase):

@@ -25,13 +25,22 @@ sys.path.insert(0, str(src_path))
 
 from core.logging_config import initialize_project_logging
 from data.loaders import (
+    _calculate_directory_stats,
+    _find_image_subdirectories,
+    _load_valid_images,
+    analyze_image_characteristics,
+    analyze_sprites,
     calculate_image_stats,
     create_train_val_split,
+    create_training_dataset,
     download_pokemon_data_with_cache,
     find_valid_pairs,
+    get_dataset_statistics,
     process_image_pairs,
     resize_with_padding,
     save_dataset_metadata,
+    visualize_artwork_sprite_pairs,
+    visualize_dataset_samples,
 )
 
 # Import test utilities
@@ -711,6 +720,407 @@ class TestCalculateImageStats(unittest.TestCase):
             "test_calculate_stats_corrupted_images",
             True,
             "Correctly skipped corrupted images",
+        )
+
+
+class TestVisualizationFunctions(unittest.TestCase):
+    """Test suite for visualization functions that were missing coverage."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    @patch("matplotlib.pyplot.show")
+    def test_visualize_dataset_samples_real_function(self, mock_show):
+        """Test visualize_dataset_samples function with real implementation."""
+        # Create test subdirectories with images
+        sprite_dir = self.test_dir / "sprites"
+        artwork_dir = self.test_dir / "artwork"
+        sprite_dir.mkdir()
+        artwork_dir.mkdir()
+
+        # Create test images
+        for i in range(3):
+            Image.new("RGB", (64, 64), color="red").save(
+                sprite_dir / f"sprite_{i}.png"
+            )
+            Image.new("RGB", (128, 128), color="blue").save(
+                artwork_dir / f"art_{i}.jpg"
+            )
+
+        # Call the actual function
+        with patch("sys.stdout"):  # Capture print output
+            visualize_dataset_samples(self.test_dir, samples_per_category=2)
+
+        # Verify matplotlib show was called (indicating plots were created)
+        mock_show.assert_called()
+
+        print_test_result(
+            "test_visualize_dataset_samples_real_function",
+            True,
+            "Successfully called visualize_dataset_samples function",
+        )
+
+    @patch("matplotlib.pyplot.show")
+    def test_analyze_sprites_real_function(self, mock_show):
+        """Test analyze_sprites function with real implementation."""
+        # Create sprite files
+        for i in range(5):
+            Image.new("RGB", (96, 96), color=(i * 50, 100, 150)).save(
+                self.test_dir / f"sprite_{i}.png"
+            )
+
+        # Call the actual function
+        with patch("sys.stdout"):  # Capture print output
+            analyze_sprites(self.test_dir)
+
+        # Verify matplotlib show was called
+        mock_show.assert_called()
+
+        print_test_result(
+            "test_analyze_sprites_real_function",
+            True,
+            "Successfully called analyze_sprites function",
+        )
+
+    def test_get_dataset_statistics_real_function(self):
+        """Test get_dataset_statistics function with real implementation."""
+        # Create subdirectories with images
+        sprite_dir = self.test_dir / "sprites"
+        artwork_dir = self.test_dir / "artwork"
+        sprite_dir.mkdir()
+        artwork_dir.mkdir()
+
+        # Create test images
+        for i in range(3):
+            Image.new("RGB", (64, 64), color="red").save(
+                sprite_dir / f"sprite_{i}.png"
+            )
+            Image.new("RGB", (256, 256), color="blue").save(
+                artwork_dir / f"art_{i}.jpg"
+            )
+
+        # Call the actual function
+        stats = get_dataset_statistics(self.test_dir)
+
+        # Verify the function returns expected structure
+        self.assertIn("sprites", stats)
+        self.assertIn("artwork", stats)
+        self.assertIn("total_size_mb", stats)
+        self.assertEqual(stats["sprites"]["total_files"], 3)
+        self.assertEqual(stats["artwork"]["total_files"], 3)
+
+        print_test_result(
+            "test_get_dataset_statistics_real_function",
+            True,
+            f"Stats: {stats['sprites']['total_files']} sprites, {stats['artwork']['total_files']} artwork",
+        )
+
+    @patch("matplotlib.pyplot.show")
+    def test_visualize_artwork_sprite_pairs_real_function(self, mock_show):
+        """Test visualize_artwork_sprite_pairs function with real implementation."""
+        # Create proper directory structure
+        sprite_dir = self.test_dir / "black_white_sprites"
+        artwork_dir = self.test_dir / "sugimori_artwork"
+        sprite_dir.mkdir()
+        artwork_dir.mkdir()
+
+        # Create matching files with proper naming convention
+        for i in range(3):
+            pokemon_id = f"{i+1:04d}"
+            Image.new("RGB", (96, 96), color="red").save(
+                sprite_dir / f"pokemon_{pokemon_id}_bw.png"
+            )
+            Image.new("RGB", (475, 475), color="blue").save(
+                artwork_dir / f"pokemon_{pokemon_id}_artwork.png"
+            )
+
+        # Call the actual function
+        with patch("sys.stdout"):  # Capture print output
+            matched_pairs = visualize_artwork_sprite_pairs(
+                self.test_dir, num_pairs=2
+            )
+
+        # Verify function execution and return value
+        self.assertEqual(matched_pairs, 3)  # Should find all 3 pairs
+        mock_show.assert_called()
+
+        print_test_result(
+            "test_visualize_artwork_sprite_pairs_real_function",
+            True,
+            f"Successfully found and visualized {matched_pairs} matched pairs",
+        )
+
+    def test_create_training_dataset_real_function(self):
+        """Test create_training_dataset function with real implementation."""
+        # Create test image pairs
+        output_dir = self.test_dir / "dataset"
+        pairs = []
+
+        for i in range(4):
+            pokemon_id = f"{i+1:04d}"
+            sprite_path = self.test_dir / f"sprite_{pokemon_id}.png"
+            artwork_path = self.test_dir / f"artwork_{pokemon_id}.png"
+
+            # Create test images
+            Image.new("RGB", (64, 64), color="red").save(sprite_path)
+            Image.new("RGB", (256, 256), color="blue").save(artwork_path)
+
+            pairs.append(
+                {
+                    "pokemon_id": pokemon_id,
+                    "sprite_path": sprite_path,
+                    "artwork_path": artwork_path,
+                }
+            )
+
+        # Call the actual function
+        dataset_info = create_training_dataset(
+            pairs, output_dir, train_split=0.75, image_size=(128, 128)
+        )
+
+        # Verify dataset creation
+        self.assertEqual(dataset_info["total_pairs"], 4)
+        self.assertEqual(dataset_info["train_pairs"], 3)  # 75% of 4
+        self.assertEqual(dataset_info["val_pairs"], 1)  # 25% of 4
+        self.assertEqual(dataset_info["image_size"], (128, 128))
+
+        # Verify directories were created
+        train_input_dir = Path(dataset_info["data_paths"]["train_input"])
+        self.assertTrue(train_input_dir.exists())
+
+        print_test_result(
+            "test_create_training_dataset_real_function",
+            True,
+            f"Created dataset: {dataset_info['train_pairs']} train, {dataset_info['val_pairs']} val",
+        )
+
+    @patch("matplotlib.pyplot.show")
+    def test_analyze_image_characteristics_real_function(self, mock_show):
+        """Test analyze_image_characteristics function with real implementation."""
+        # Create mock dataset directory structure
+        train_input_dir = self.test_dir / "train" / "input"
+        train_target_dir = self.test_dir / "train" / "target"
+        train_input_dir.mkdir(parents=True)
+        train_target_dir.mkdir(parents=True)
+
+        # Create test images
+        for i in range(3):
+            Image.new("RGB", (128, 128), color="red").save(
+                train_input_dir / f"input_{i}.png"
+            )
+            Image.new("RGB", (64, 64), color="blue").save(
+                train_target_dir / f"target_{i}.png"
+            )
+
+        dataset_info = {
+            "data_paths": {
+                "train_input": str(train_input_dir),
+                "train_target": str(train_target_dir),
+            }
+        }
+
+        # Call the actual function
+        with patch("sys.stdout"):  # Capture print output
+            analyze_image_characteristics(dataset_info)
+
+        # Verify matplotlib was called
+        mock_show.assert_called()
+
+        print_test_result(
+            "test_analyze_image_characteristics_real_function",
+            True,
+            "Successfully analyzed image characteristics",
+        )
+
+    def test_save_dataset_metadata_real_function(self):
+        """Test save_dataset_metadata function with real implementation."""
+        dataset_info = {
+            "total_pairs": 100,
+            "train_pairs": 80,
+            "val_pairs": 20,
+            "image_size": [64, 64],
+            "created_at": "2025-08-02",
+        }
+
+        # Call the actual function
+        save_dataset_metadata(self.test_dir, dataset_info)
+
+        # Verify file was created and has correct content
+        metadata_file = self.test_dir / "dataset_info.json"
+        self.assertTrue(metadata_file.exists())
+
+        with open(metadata_file, "r") as f:
+            saved_data = json.load(f)
+
+        self.assertEqual(saved_data, dataset_info)
+
+        print_test_result(
+            "test_save_dataset_metadata_real_function",
+            True,
+            f"Saved metadata with {dataset_info['total_pairs']} pairs",
+        )
+
+
+class TestEdgeCasesAndErrorHandling(unittest.TestCase):
+    """Test suite for edge cases and error handling to maximize coverage."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    def test_get_dataset_statistics_nonexistent_directory(self):
+        """Test get_dataset_statistics with nonexistent directory."""
+        nonexistent_dir = self.test_dir / "does_not_exist"
+
+        # Call function with nonexistent directory
+        stats = get_dataset_statistics(nonexistent_dir)
+
+        # Should return error information
+        self.assertIn("error", stats)
+        self.assertEqual(stats["error"], "Dataset directory not found")
+
+        print_test_result(
+            "test_get_dataset_statistics_nonexistent_directory",
+            True,
+            "Correctly handled nonexistent directory",
+        )
+
+    def test_analyze_sprites_empty_directory(self):
+        """Test analyze_sprites with empty directory."""
+        # Create empty directory
+        empty_dir = self.test_dir / "empty"
+        empty_dir.mkdir()
+
+        with patch("sys.stdout"):
+            analyze_sprites(empty_dir)
+
+        print_test_result(
+            "test_analyze_sprites_empty_directory",
+            True,
+            "Correctly handled empty sprite directory",
+        )
+
+    @patch("matplotlib.pyplot.show")
+    def test_visualize_artwork_sprite_pairs_no_matches(self, mock_show):
+        """Test visualize_artwork_sprite_pairs when no matching pairs found."""
+        # Create directories with non-matching files
+        sprite_dir = self.test_dir / "black_white_sprites"
+        artwork_dir = self.test_dir / "sugimori_artwork"
+        sprite_dir.mkdir()
+        artwork_dir.mkdir()
+
+        # Create files that don't match the expected pattern
+        Image.new("RGB", (96, 96), color="red").save(
+            sprite_dir / "random_sprite.png"
+        )
+        Image.new("RGB", (475, 475), color="blue").save(
+            artwork_dir / "random_art.png"
+        )
+
+        with patch("sys.stdout"):
+            matched_pairs = visualize_artwork_sprite_pairs(
+                self.test_dir, num_pairs=2
+            )
+
+        # Should find 0 matching pairs
+        self.assertEqual(matched_pairs, 0)
+
+        print_test_result(
+            "test_visualize_artwork_sprite_pairs_no_matches",
+            True,
+            "Correctly handled no matching pairs",
+        )
+
+    def test_create_training_dataset_edge_cases(self):
+        """Test create_training_dataset with edge cases."""
+        output_dir = self.test_dir / "dataset"
+
+        # Test with single pair
+        pairs = []
+        pokemon_id = "0001"
+        sprite_path = self.test_dir / f"sprite_{pokemon_id}.png"
+        artwork_path = self.test_dir / f"artwork_{pokemon_id}.png"
+
+        # Create test images
+        Image.new("RGB", (32, 32), color="red").save(sprite_path)
+        Image.new("RGB", (128, 128), color="blue").save(artwork_path)
+
+        pairs.append(
+            {
+                "pokemon_id": pokemon_id,
+                "sprite_path": sprite_path,
+                "artwork_path": artwork_path,
+            }
+        )
+
+        # Test with 100% train split
+        dataset_info = create_training_dataset(
+            pairs, output_dir, train_split=1.0, image_size=(64, 64)
+        )
+
+        # Should have 1 training pair, 0 validation pairs
+        self.assertEqual(dataset_info["total_pairs"], 1)
+        self.assertEqual(dataset_info["train_pairs"], 1)
+        self.assertEqual(dataset_info["val_pairs"], 0)
+
+        print_test_result(
+            "test_create_training_dataset_edge_cases",
+            True,
+            "Handled edge case: 100% train split with 1 pair",
+        )
+
+    def test_create_train_val_split_edge_cases(self):
+        """Test create_train_val_split with edge cases."""
+        # Test with empty list
+        empty_pairs = []
+        train_pairs, val_pairs = create_train_val_split(empty_pairs)
+
+        self.assertEqual(len(train_pairs), 0)
+        self.assertEqual(len(val_pairs), 0)
+
+        # Test with single item and default split
+        single_pair = [{"pokemon_id": "0001"}]
+        train_pairs, val_pairs = create_train_val_split(single_pair)
+
+        # Should have at least one item total
+        self.assertEqual(len(train_pairs) + len(val_pairs), 1)
+
+        print_test_result(
+            "test_create_train_val_split_edge_cases",
+            True,
+            "Handled edge cases: empty list and single item",
+        )
+
+    def test_private_helper_functions_edge_cases(self):
+        """Test private helper functions with edge cases."""
+        # Test _find_image_subdirectories with no subdirectories
+        subdirs = _find_image_subdirectories(self.test_dir)
+        self.assertEqual(len(subdirs), 0)
+
+        # Test _load_valid_images with empty list
+        valid_images = _load_valid_images([], samples_needed=5)
+        self.assertEqual(len(valid_images), 0)
+
+        # Test _calculate_directory_stats with empty list
+        stats = _calculate_directory_stats([], "empty_dir")
+        self.assertEqual(stats["files"], 0)
+        self.assertEqual(stats["size_mb"], 0.0)
+
+        print_test_result(
+            "test_private_helper_functions_edge_cases",
+            True,
+            "Tested private helper functions with edge cases",
         )
 
 

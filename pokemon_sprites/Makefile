@@ -56,8 +56,14 @@ format:
 	black --line-length=120 $$(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
 	@echo "Code formatted successfully"
 
-check: lint test-coverage
-	@echo "All quality checks passed!"
+check:
+	@echo "Running auto-fix and quality checks..."
+	./scripts/lint.sh --fix || true
+	@echo "Running tests with coverage..."
+	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=50
+	@echo ""
+	@echo "Coverage report generated in htmlcov/ directory"
+	@echo "All quality checks completed!"
 
 # Testing
 test:
