@@ -47,7 +47,7 @@ jobs:
         python -m pytest tests/unit/ -v --tb=short
     
     - name: Upload unit test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: unit-test-results-${{ matrix.python-version }}
@@ -94,7 +94,7 @@ jobs:
         fail_ci_if_error: true
     
     - name: Upload coverage HTML report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: pokemon_sprites/htmlcov/
@@ -126,7 +126,7 @@ jobs:
         python -m pytest tests/integration/ -v --tb=short
     
     - name: Upload integration test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: integration-test-results
@@ -159,7 +159,7 @@ jobs:
         python -m pytest tests/performance/ -v --tb=short
     
     - name: Upload performance test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: performance-test-results
@@ -207,7 +207,7 @@ jobs:
         echo "- Performance Tests: ✅" >> $GITHUB_STEP_SUMMARY
     
     - name: Upload comprehensive test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: comprehensive-test-results
@@ -241,7 +241,7 @@ jobs:
         bandit -r src/ -f json -o bandit-report.json || true
     
     - name: Upload security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: security-reports
