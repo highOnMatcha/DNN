@@ -1,0 +1,35 @@
+# Test dependencies for Pokemon Sprite Generation Pipeline
+# These dependencies are required for running the comprehensive test suite
+
+# Core testing framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-xdist>=3.0.0
+pytest-timeout>=2.1.0
+pytest-mock>=3.10.0
+
+# Performance and monitoring
+psutil>=5.9.0
+memory-profiler>=0.60.0
+
+# Additional testing utilities
+unittest-xml-reporting>=3.2.0
+coverage>=7.0.0
+
+# For test data generation and manipulation
+Pillow>=9.0.0
+numpy>=1.21.0
+
+# PyTorch for model testing (should match main requirements)
+torch>=1.12.0
+torchvision>=0.13.0
+
+# Optional: for advanced testing features
+parameterized>=0.8.1
+hypothesis>=6.0.0
+
+# Development and linting (optional)
+black>=22.0.0
+isort>=5.10.0
+flake8>=5.0.0
+mypy>=0.991
