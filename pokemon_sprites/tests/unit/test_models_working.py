@@ -72,14 +72,14 @@ class TestBasicModels(unittest.TestCase):
 
     def test_unet_model(self):
         """Test UNet model creation and forward pass."""
-        model = UNet(in_channels=3, out_channels=3, base_dim=32)
+        model = UNet(input_channels=3, output_channels=3, features=[32, 64, 128])
         self.assertIsNotNone(model)
         
         # Test forward pass
-        with torch.no_grad():
-            output = model(self.input_tensor)
-            
-        self.assertEqual(output.shape, self.input_tensor.shape)
+        x = torch.randn(2, 3, 64, 64)
+        output = model(x)
+        
+        self.assertEqual(output.shape, (2, 3, 64, 64))
         self.assertFalse(torch.isnan(output).any())
         
         print_test_result("test_unet_model", True, 
@@ -87,36 +87,35 @@ class TestBasicModels(unittest.TestCase):
 
     def test_pix2pix_generator(self):
         """Test Pix2Pix generator model."""
-        model = Pix2PixGenerator(input_nc=3, output_nc=3, ngf=64)
+        model = Pix2PixGenerator(input_channels=3, output_channels=3, ngf=64)
         self.assertIsNotNone(model)
         
         # Test forward pass
-        with torch.no_grad():
-            output = model(self.input_tensor)
-            
-        self.assertEqual(output.shape, self.input_tensor.shape)
+        x = torch.randn(2, 3, 256, 256)
+        output = model(x)
+        
+        self.assertEqual(output.shape, (2, 3, 256, 256))
         self.assertFalse(torch.isnan(output).any())
         
         print_test_result("test_pix2pix_generator", True, 
-                         f"Pix2Pix generator output shape: {output.shape}")
+                         f"Pix2PixGenerator output shape: {output.shape}")
 
     def test_pix2pix_discriminator(self):
         """Test Pix2Pix discriminator model."""
-        model = Pix2PixDiscriminator(input_nc=6, ndf=64)  # 6 channels for input+target
+        model = Pix2PixDiscriminator(input_channels=6, ndf=64)  # 6 channels for input+target
         self.assertIsNotNone(model)
         
-        # Create input with 6 channels (input + target concatenated)
-        input_with_target = torch.randn(self.batch_size, 6, self.height, self.width)
+        # Test forward pass with separate input and target images
+        input_img = torch.randn(2, 3, 256, 256)
+        target_img = torch.randn(2, 3, 256, 256) 
+        output = model(input_img, target_img)
         
-        # Test forward pass
-        with torch.no_grad():
-            output = model(input_with_target)
-            
-        self.assertEqual(len(output.shape), 4)  # Should be a feature map
+        # Output should be a patch-wise prediction
+        self.assertTrue(len(output.shape) == 4)  # Batch, channels, height, width
         self.assertFalse(torch.isnan(output).any())
         
         print_test_result("test_pix2pix_discriminator", True, 
-                         f"Pix2Pix discriminator output shape: {output.shape}")
+                         f"Pix2PixDiscriminator output shape: {output.shape}")
 
     def test_conv_block(self):
         """Test ConvBlock module."""
@@ -136,7 +135,7 @@ class TestBasicModels(unittest.TestCase):
 
     def test_res_block(self):
         """Test ResBlock module."""
-        block = ResBlock(dim=64)
+        block = ResBlock(channels=64)
         self.assertIsNotNone(block)
         
         # Create input with correct number of channels
@@ -154,7 +153,7 @@ class TestBasicModels(unittest.TestCase):
 
     def test_attention_block(self):
         """Test AttentionBlock module."""
-        block = AttentionBlock(dim=64)
+        block = AttentionBlock(channels=64)
         self.assertIsNotNone(block)
         
         # Create input with correct number of channels
@@ -172,7 +171,7 @@ class TestBasicModels(unittest.TestCase):
 
     def test_self_attention(self):
         """Test SelfAttention module."""
-        attention = SelfAttention(in_dim=64)
+        attention = SelfAttention(channels=64)
         self.assertIsNotNone(attention)
         
         # Create input with correct number of channels
@@ -191,9 +190,9 @@ class TestBasicModels(unittest.TestCase):
     def test_model_parameter_count(self):
         """Test that models have reasonable parameter counts."""
         models_to_test = [
-            ("UNet", UNet(in_channels=3, out_channels=3, base_dim=32)),
-            ("Pix2PixGenerator", Pix2PixGenerator(input_nc=3, output_nc=3, ngf=64)),
-            ("Pix2PixDiscriminator", Pix2PixDiscriminator(input_nc=6, ndf=64)),
+            ("UNet", UNet(input_channels=3, output_channels=3, features=[32, 64, 128])),
+            ("Pix2PixGenerator", Pix2PixGenerator(input_channels=3, output_channels=3, ngf=64)),
+            ("Pix2PixDiscriminator", Pix2PixDiscriminator(input_channels=6, ndf=64)),
         ]
         
         for name, model in models_to_test:

@@ -135,15 +135,12 @@ class TestBasicAugmentation(unittest.TestCase):
         noise_aug = NoiseAugmentation(noise_factor=0.1)
         self.assertIsNotNone(noise_aug)
         
-        # Convert to tensors for noise testing
-        to_tensor = transforms.ToTensor()
-        input_tensor = to_tensor(self.input_img)
-        target_tensor = to_tensor(self.target_img)
+        # Test noise application with PIL images (not tensors)
+        input_noisy, target_noisy = noise_aug(self.input_img, self.target_img)
         
-        # Test noise application
-        input_noisy, target_noisy = noise_aug(input_tensor, target_tensor)
-        self.assertEqual(input_noisy.shape, input_tensor.shape)
-        self.assertEqual(target_noisy.shape, target_tensor.shape)
+        # Should return PIL Images of same size
+        self.assertEqual(input_noisy.size, self.input_img.size)
+        self.assertEqual(target_noisy.size, self.target_img.size)
         
         print_test_result("test_noise_augmentation", True, 
                          "NoiseAugmentation working correctly")
