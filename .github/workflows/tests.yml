@@ -6,9 +6,8 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-
-# Allow manual workflow dispatch
-workflow_dispatch:
+  # Allow manual workflow dispatch
+  workflow_dispatch:
 
 jobs:
   # Unit Tests (Working Tests Only)
