@@ -5,11 +5,10 @@ Test suite for LearningRateFinder component.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 
 # [INITIALIZATION] Add src directory to Python path for module imports
 project_root = Path(__file__).parent.parent.parent
@@ -28,7 +27,7 @@ except ImportError:
 
 class MockDiscriminator(nn.Module):
     """Mock discriminator that accepts two inputs like Pix2PixDiscriminator."""
-    
+
     def __init__(self):
         super().__init__()
         # Process concatenated input (3+4=7 channels) -> 1 output
@@ -38,9 +37,9 @@ class MockDiscriminator(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
             nn.Linear(16, 1),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
-    
+
     def forward(self, input_img, target_img):
         # Concatenate inputs along channel dimension like real discriminator
         combined = torch.cat([input_img, target_img], dim=1)
@@ -49,14 +48,14 @@ class MockDiscriminator(nn.Module):
 
 class MockGenerator(nn.Module):
     """Mock generator that outputs images of the right size."""
-    
+
     def __init__(self):
         super().__init__()
         # Simple conv layers that maintain spatial dimensions
         self.model = nn.Sequential(
             nn.Conv2d(3, 4, 1, 1, 0),  # Convert 3 channels to 4 channels
         )
-    
+
     def forward(self, x):
         return self.model(x)
 
@@ -72,7 +71,7 @@ class TestLearningRateFinderBasic(unittest.TestCase):
     def test_lr_finder_initialization(self):
         """Test LearningRateFinder initialization."""
         logger.info("[TEST] Testing LearningRateFinder initialization")
-        
+
         try:
             from optimizers.lr_finder import LearningRateFinder
 
@@ -90,26 +89,30 @@ class TestLearningRateFinderBasic(unittest.TestCase):
 
             logger.info("[SUCCESS] LearningRateFinder initialization works")
         except Exception as e:
-            logger.error(f"[FAIL] LearningRateFinder initialization failed: {e}")
+            logger.error(
+                f"[FAIL] LearningRateFinder initialization failed: {e}"
+            )
             self.fail(f"LearningRateFinder initialization failed: {e}")
 
     def test_create_synthetic_dataloader(self):
         """Test the synthetic dataloader creation."""
         logger.info("[TEST] Testing synthetic dataloader creation")
-        
+
         try:
             from optimizers.lr_finder import create_synthetic_dataloader
 
-            dataloader = create_synthetic_dataloader(batch_size=2, num_samples=10)
+            dataloader = create_synthetic_dataloader(
+                batch_size=2, num_samples=10
+            )
 
             # Verify dataloader structure
             self.assertIsInstance(dataloader, DataLoader)
-            
+
             # Test getting a batch
             artwork, sprite = next(iter(dataloader))
             self.assertEqual(artwork.shape[0], 2)  # batch_size
             self.assertEqual(artwork.shape[1], 3)  # input channels
-            self.assertEqual(sprite.shape[1], 4)   # output channels
+            self.assertEqual(sprite.shape[1], 4)  # output channels
 
             logger.info("[SUCCESS] Synthetic dataloader creation works")
         except Exception as e:
@@ -119,24 +122,29 @@ class TestLearningRateFinderBasic(unittest.TestCase):
     def test_lr_finder_find_optimal_lr(self):
         """Test the find_optimal_lr method."""
         logger.info("[TEST] Testing find_optimal_lr method")
-        
+
         try:
-            from optimizers.lr_finder import LearningRateFinder, create_synthetic_dataloader
+            from optimizers.lr_finder import (
+                LearningRateFinder,
+                create_synthetic_dataloader,
+            )
 
             lr_finder = LearningRateFinder(
                 self.generator, self.discriminator, device="cpu"
             )
 
             # Create small dataloader for testing
-            dataloader = create_synthetic_dataloader(batch_size=2, num_samples=8)
+            dataloader = create_synthetic_dataloader(
+                batch_size=2, num_samples=8
+            )
 
-            # Test with conservative parameters 
+            # Test with conservative parameters
             results = lr_finder.find_optimal_lr(
                 dataloader,
                 start_lr=1e-5,
                 end_lr=1e-3,
                 num_iterations=5,  # Very small for testing
-                lambda_l1=10.0
+                lambda_l1=10.0,
             )
 
             # Check result structure
@@ -145,12 +153,12 @@ class TestLearningRateFinderBasic(unittest.TestCase):
             self.assertIn("min_lr", results)
             self.assertIn("max_lr", results)
             self.assertIn("analysis_method", results)
-            
+
             # Check that learning rates are reasonable
             self.assertGreater(results["optimal_lr"], 0)
             self.assertGreater(results["min_lr"], 0)
             self.assertGreater(results["max_lr"], 0)
-            
+
             # Check history was recorded
             self.assertGreater(len(lr_finder.history["lr"]), 0)
             self.assertGreater(len(lr_finder.history["loss"]), 0)
@@ -163,7 +171,7 @@ class TestLearningRateFinderBasic(unittest.TestCase):
     def test_analyze_results_method(self):
         """Test the _analyze_results method."""
         logger.info("[TEST] Testing _analyze_results method")
-        
+
         try:
             from optimizers.lr_finder import LearningRateFinder
 
@@ -184,10 +192,14 @@ class TestLearningRateFinderBasic(unittest.TestCase):
             self.assertIn("max_lr", results)
             self.assertIn("min_loss_lr", results)
             self.assertIn("analysis_method", results)
-            
+
             # Check analysis logic
-            self.assertEqual(results["min_loss_lr"], 1e-4)  # Should find minimum
-            self.assertEqual(results["optimal_lr"], 1e-4 / 3.0)  # Smith's method
+            self.assertEqual(
+                results["min_loss_lr"], 1e-4
+            )  # Should find minimum
+            self.assertEqual(
+                results["optimal_lr"], 1e-4 / 3.0
+            )  # Smith's method
             self.assertEqual(results["analysis_method"], "smith_et_al_2017")
 
             logger.info("[SUCCESS] _analyze_results method works")
@@ -198,7 +210,7 @@ class TestLearningRateFinderBasic(unittest.TestCase):
     def test_analyze_results_fallback(self):
         """Test the _analyze_results fallback for insufficient data."""
         logger.info("[TEST] Testing _analyze_results fallback")
-        
+
         try:
             from optimizers.lr_finder import LearningRateFinder
 

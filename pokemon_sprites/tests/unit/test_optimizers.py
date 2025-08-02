@@ -10,8 +10,6 @@ from unittest.mock import patch
 
 import torch.nn as nn
 
-from src.optimizers.model_validator import validate_all_configurations
-
 
 class TestOptimizers(unittest.TestCase):
     """Test optimization utilities."""

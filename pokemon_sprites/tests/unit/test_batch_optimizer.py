@@ -27,7 +27,7 @@ except ImportError:
 
 class MockDiscriminator(nn.Module):
     """Mock discriminator that accepts two inputs like Pix2PixDiscriminator."""
-    
+
     def __init__(self):
         super().__init__()
         # Process concatenated input (3+4=7 channels) -> 1 output
@@ -37,9 +37,9 @@ class MockDiscriminator(nn.Module):
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
             nn.Linear(16, 1),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
-    
+
     def forward(self, input_img, target_img):
         # Concatenate inputs along channel dimension like real discriminator
         combined = torch.cat([input_img, target_img], dim=1)
@@ -48,14 +48,14 @@ class MockDiscriminator(nn.Module):
 
 class MockGenerator(nn.Module):
     """Mock generator that outputs images of the right size."""
-    
+
     def __init__(self):
         super().__init__()
         # Simple conv layers that maintain spatial dimensions
         self.model = nn.Sequential(
             nn.Conv2d(3, 4, 1, 1, 0),  # Convert 3 channels to 4 channels
         )
-    
+
     def forward(self, x):
         return self.model(x)
 
@@ -71,7 +71,7 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
     def test_batch_optimizer_initialization(self):
         """Test BatchSizeOptimizer initialization."""
         logger.info("[TEST] Testing BatchSizeOptimizer initialization")
-        
+
         try:
             from optimizers.batch_optimizer import BatchSizeOptimizer
 
@@ -86,13 +86,15 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
 
             logger.info("[SUCCESS] BatchSizeOptimizer initialization works")
         except Exception as e:
-            logger.error(f"[FAIL] BatchSizeOptimizer initialization failed: {e}")
+            logger.error(
+                f"[FAIL] BatchSizeOptimizer initialization failed: {e}"
+            )
             self.fail(f"BatchSizeOptimizer initialization failed: {e}")
 
     def test_test_single_batch_size_method(self):
         """Test the _test_single_batch_size method."""
         logger.info("[TEST] Testing _test_single_batch_size method")
-        
+
         try:
             from optimizers.batch_optimizer import BatchSizeOptimizer
 
@@ -101,13 +103,17 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
             )
 
             # Patch the CUDA issue in the original code for testing
-            with patch('torch.cuda.reset_peak_memory_stats') as mock_reset:
-                with patch('torch.cuda.max_memory_allocated') as mock_max:
+            with patch("torch.cuda.reset_peak_memory_stats"):
+                with patch("torch.cuda.max_memory_allocated") as mock_max:
                     mock_max.return_value = 100 * 1024 * 1024  # 100MB
-                    
+
                     # Test with small sizes
-                    success, memory_used, training_time = optimizer._test_single_batch_size(
-                        batch_size=1, input_size=(3, 32, 32), output_size=(4, 32, 32)
+                    success, memory_used, training_time = (
+                        optimizer._test_single_batch_size(
+                            batch_size=1,
+                            input_size=(3, 32, 32),
+                            output_size=(4, 32, 32),
+                        )
                     )
 
                     # Should succeed and return valid results
@@ -125,7 +131,7 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
     def test_find_optimal_batch_size_method(self):
         """Test the find_optimal_batch_size method."""
         logger.info("[TEST] Testing find_optimal_batch_size method")
-        
+
         try:
             from optimizers.batch_optimizer import BatchSizeOptimizer
 
@@ -133,7 +139,7 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
                 self.generator, self.discriminator, device="cpu"
             )
 
-            # Test with conservative parameters 
+            # Test with conservative parameters
             results = optimizer.find_optimal_batch_size(
                 initial_max_batch_size=4,
                 input_size=(3, 32, 32),
@@ -145,7 +151,7 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
             self.assertIn("recommended_batch_size", results)
             self.assertIn("optimal_batch_size", results)
             self.assertIn("max_stable_batch_size", results)
-            
+
             # Check that batch sizes are reasonable
             self.assertGreater(results["recommended_batch_size"], 0)
             self.assertGreater(results["optimal_batch_size"], 0)
