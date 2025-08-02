@@ -79,3 +79,5 @@ wandb/
 *.safetensors
 
 pokemon_sprites/models
+.ipynb_checkpoints
+.coverage

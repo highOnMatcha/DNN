@@ -187,13 +187,16 @@ class TrainingScheduleOptimizer:
 def create_optimal_training_plan(config_path):
     """
     Create complete training plan integrating all optimization insights
+    and update the configuration file with optimized schedules
     """
     import json
+    from pathlib import Path
     
     print("OPTIMAL TRAINING PLAN FOR POKEMON SPRITE GENERATION")
     print("=" * 60)
     
     # Load configuration
+    config_path = Path(config_path)
     with open(config_path, 'r') as f:
         config = json.load(f)
     
@@ -202,6 +205,7 @@ def create_optimal_training_plan(config_path):
     training_plans = {}
     optimizer = TrainingScheduleOptimizer()
     
+    # Create optimized training schedules for each model
     for model_name in models_to_train:
         print(f"\nPLAN FOR: {model_name.upper().replace('-', ' ')}")
         print("=" * 50)
@@ -249,6 +253,63 @@ def create_optimal_training_plan(config_path):
         print(f"  GPU memory needed: {plan['recommended_gpu_memory']}")
         print(f"  Base learning rate: {base_lr:.2e}")
     
+    # Add optimized training schedules to config
+    if 'optimized_training_schedules' not in config:
+        config['optimized_training_schedules'] = {}
+    
+    # Convert training plans to config format
+    for model_name, plan in training_plans.items():
+        optimized_schedule = {
+            'description': f"Optimized curriculum learning schedule for {model_name}",
+            'strategy': 'curriculum_learning',
+            'base_learning_rate': plan['base_learning_rate'],
+            'total_epochs': plan['total_epochs'],
+            'gpu_memory_requirement': plan['recommended_gpu_memory'],
+            'stages': []
+        }
+        
+        for i, stage in enumerate(plan['curriculum_stages']):
+            stage_config = {
+                'stage_name': stage['name'],
+                'stage_number': i + 1,
+                'epochs': stage['epochs'],
+                'input_resolution': stage['input_resolution'],
+                'output_resolution': stage['output_resolution'],
+                'batch_size': stage['batch_size'],
+                'learning_rate': stage['learning_rate'],
+                'augmentation_level': stage['augmentation'],
+                'focus': stage['focus'],
+                'lr_schedule': stage.get('lr_schedule', 'cosine_annealing'),
+                'warmup_epochs': stage.get('warmup_epochs', 3)
+            }
+            optimized_schedule['stages'].append(stage_config)
+        
+        config['optimized_training_schedules'][model_name] = optimized_schedule
+    
+    # Save updated configuration
+    print(f"\n{'='*60}")
+    print("UPDATING CONFIGURATION FILE")
+    print("="*60)
+    
+    try:
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        print(f"[SUCCESS] Updated {config_path} with optimized training schedules")
+        print(f"[INFO] Added training schedules for {len(training_plans)} models")
+        
+        # Verify the update
+        with open(config_path, 'r') as f:
+            updated_config = json.load(f)
+        
+        if 'optimized_training_schedules' in updated_config:
+            schedules_count = len(updated_config['optimized_training_schedules'])
+            print(f"[SUCCESS] Verification: {schedules_count} optimized schedules saved")
+        else:
+            print(f"[FAIL] Verification failed: schedules not found in updated config")
+            
+    except Exception as e:
+        print(f"[FAIL] Failed to update configuration file: {e}")
+    
     # Final recommendations
     print("\n" + "="*60)
     print("FINAL RECOMMENDATIONS")
@@ -259,9 +320,12 @@ def create_optimal_training_plan(config_path):
     print("4. Save checkpoints after each curriculum stage")
     print("5. Use mixed precision training (fp16) to save memory")
     print("6. Enable gradient accumulation if batch sizes are too small")
+    print("\nOptimized schedules saved to config file:")
+    for model_name in training_plans.keys():
+        print(f"  • {model_name}: {training_plans[model_name]['total_epochs']} total epochs")
     print("\nNext Steps:")
-    print("- Implement the actual model classes")
-    print("- Set up the training pipeline with curriculum learning")
+    print("- Use updated config file with optimized schedules")
+    print("- Implement train.py with curriculum learning support")
     print("- Configure logging and checkpointing")
     print("- Start with the foundation stage (128px inputs)")
     
