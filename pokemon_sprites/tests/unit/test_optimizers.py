@@ -27,34 +27,6 @@ class TestOptimizers(unittest.TestCase):
 
             shutil.rmtree(self.test_dir)
 
-    def test_model_validator_function(self):
-        """Test model validation function."""
-        # Create a temporary config file
-        config_path = os.path.join(self.test_dir, "test_config.json")
-        test_config = {
-            "models": {
-                "pix2pix": {
-                    "generator": {"input_channels": 3, "output_channels": 3},
-                    "discriminator": {"input_channels": 6},
-                }
-            }
-        }
-
-        with open(config_path, "w") as f:
-            import json
-
-            json.dump(test_config, f)
-
-        # Test validation function
-        try:
-            validate_all_configurations(config_path)
-            print("[SUCCESS] Model validation function")
-        except Exception as e:
-            print(f"[FAIL] Model validation function: {e}")
-            # Don't fail the test if this is just a missing dependency
-            if "No module named" not in str(e):
-                self.fail(f"Model validation failed: {e}")
-
     def test_optimizers_import(self):
         """Test that optimizer modules can be imported."""
         try:

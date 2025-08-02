@@ -51,9 +51,6 @@ from core.logging_config import (  # noqa: E402
     initialize_project_logging,
     log_system_info,
 )
-from core.memory_efficient_trainer import (  # noqa: E402
-    MemoryEfficientPokemonTrainer,
-)
 from core.trainer import PokemonSpriteTrainer  # noqa: E402
 from data.augmentation import (  # noqa: E402
     AUGMENTATION_PRESETS,
@@ -751,14 +748,10 @@ def _create_trainer(args, model_config, training_config, wandb_run):
     logger.info("Initializing trainer...")
     if args.memory_efficient:
         logger.info(
-            "Using memory-efficient trainer with gradient "
+            "Using memory-efficient settings with gradient "
             "accumulation and mixed precision"
         )
-        return MemoryEfficientPokemonTrainer(
-            model_config, training_config, wandb_run
-        )
-    else:
-        return PokemonSpriteTrainer(model_config, training_config, wandb_run)
+    return PokemonSpriteTrainer(model_config, training_config, wandb_run)
 
 
 def _determine_max_generation_count(args, missing_artwork):

@@ -5,7 +5,13 @@ This test suite validates basic configuration functionality that exists
 in the actual codebase.
 """
 
+import sys
 import unittest
+from pathlib import Path
+
+# Add src to path for imports
+src_path = Path(__file__).parent.parent.parent / "src"
+sys.path.insert(0, str(src_path))
 
 from config.settings import (
     ModelConfig,
@@ -17,8 +23,32 @@ from config.settings import (
     list_available_models,
 )
 
-# Import test configuration (sets up path)
-from tests.test_config import TestColors, print_test_result
+
+class TestColors:
+    """ANSI color codes for professional test output."""
+
+    GREEN = "\033[92m"
+    RED = "\033[91m"
+    BLUE = "\033[94m"
+    YELLOW = "\033[93m"
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+
+
+def print_test_result(test_name: str, success: bool, message: str = ""):
+    """Print formatted test result with appropriate colors."""
+    if success:
+        print(
+            f"{TestColors.GREEN}{TestColors.BOLD}[SUCCESS]{TestColors.RESET} {test_name}"
+        )
+        if message:
+            print(f"          {message}")
+    else:
+        print(
+            f"{TestColors.RED}{TestColors.BOLD}[FAIL]{TestColors.RESET} {test_name}"
+        )
+        if message:
+            print(f"       {message}")
 
 
 class TestBasicConfiguration(unittest.TestCase):

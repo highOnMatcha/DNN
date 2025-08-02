@@ -3,7 +3,7 @@ Training orchestration for Pokemon sprite generation models.
 
 This module provides comprehensive training functionality for image-to-image
 translation models with support for different architectures, loss functions,
-and training strategies.
+and training strategies including memory-efficient enhancements.
 """
 
 from dataclasses import asdict
@@ -12,7 +12,9 @@ from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
+import torchvision.models as models
 import wandb
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid, save_image
@@ -56,9 +58,39 @@ class PokemonSpriteTrainer:
         self.logger = get_logger(f"{__name__}.{model_config.name}")
         self.progress_logger = TrainingProgressLogger()
 
+        # Memory efficiency settings
+        self.use_mixed_precision = getattr(
+            training_config, "mixed_precision", True
+        )
+        self.gradient_accumulation_steps = getattr(
+            training_config, "gradient_accumulation_steps", 1
+        )
+        self.use_perceptual_loss = getattr(
+            training_config, "use_perceptual_loss", False
+        )
+        self.perceptual_weight = getattr(
+            training_config, "perceptual_weight", 0.1
+        )
+
         # Setup device
         self.device = self._setup_device()
         self.logger.info(f"Using device: {self.device}")
+
+        # Initialize mixed precision scaler
+        if self.use_mixed_precision and self.device.type == "cuda":
+            try:
+                # Try new API first (PyTorch 2.0+)
+                from torch.amp.grad_scaler import GradScaler
+
+                self.scaler = GradScaler("cuda")
+            except ImportError:
+                # Fallback to old API
+                from torch.cuda.amp import GradScaler
+
+                self.scaler = GradScaler()
+            self.logger.info("Mixed precision training enabled")
+        else:
+            self.scaler = None
 
         # Initialize models
         self.models = self._create_models()
@@ -67,6 +99,14 @@ class PokemonSpriteTrainer:
 
         # Setup loss functions
         self.loss_functions = self._setup_loss_functions()
+
+        # Initialize perceptual loss if enabled
+        self.perceptual_loss = None
+        if self.use_perceptual_loss:
+            self.perceptual_loss = self._create_perceptual_loss()
+            self.logger.info(
+                f"Perceptual loss enabled with weight {self.perceptual_weight}"
+            )
 
         # Training state
         self.current_epoch = 0
@@ -84,6 +124,10 @@ class PokemonSpriteTrainer:
         self.logger.info(f"Trainer initialized for {model_config.name}")
         self.logger.info(f"Architecture: {model_config.architecture}")
         self.logger.info(f"Output directory: {self.output_dir}")
+        if self.gradient_accumulation_steps > 1:
+            steps = self.gradient_accumulation_steps
+            msg = f"Gradient accumulation steps: {steps}"
+            self.logger.info(msg)
 
         # Log model summary
         if model_config.architecture == "unet":
@@ -147,6 +191,66 @@ class PokemonSpriteTrainer:
             device = torch.device(self.training_config.device)
 
         return device
+
+    def _create_perceptual_loss(self):
+        """Create perceptual loss function using VGG features."""
+
+        class PerceptualLoss(nn.Module):
+            """Perceptual loss using VGG features for better visual quality."""
+
+            def __init__(
+                self,
+                layers: list = [3, 8, 15, 22],
+                weights: list = [1.0, 1.0, 1.0, 1.0],
+            ):
+                super().__init__()
+                # Use new weights parameter instead of deprecated pretrained
+                try:
+                    from torchvision.models import VGG16_Weights
+
+                    self.vgg = models.vgg16(
+                        weights=VGG16_Weights.IMAGENET1K_V1
+                    ).features
+                except ImportError:
+                    # Fallback for older torchvision versions
+                    self.vgg = models.vgg16(pretrained=True).features
+
+                self.layers = layers
+                self.weights = weights
+
+                # Freeze VGG parameters
+                for param in self.vgg.parameters():
+                    param.requires_grad = False
+
+            def forward(
+                self, input_img: torch.Tensor, target_img: torch.Tensor
+            ) -> torch.Tensor:
+                loss = torch.tensor(
+                    0.0, device=input_img.device, dtype=torch.float32
+                )
+                x = input_img
+                y = target_img
+
+                for i, layer in enumerate(list(self.vgg.children())):
+                    x = layer(x)
+                    y = layer(y)
+
+                    if i in self.layers:
+                        weight = self.weights[self.layers.index(i)]
+                        loss += weight * F.mse_loss(x, y)
+
+                return loss
+
+        return PerceptualLoss().to(self.device)
+
+    def _compute_perceptual_loss(
+        self, generated: torch.Tensor, target: torch.Tensor
+    ) -> torch.Tensor:
+        """Compute perceptual loss with memory efficiency."""
+        if not self.use_perceptual_loss or self.perceptual_loss is None:
+            return torch.tensor(0.0, device=self.device)
+
+        return self.perceptual_weight * self.perceptual_loss(generated, target)
 
     def _create_models(self) -> Union[nn.Module, Dict[str, nn.Module]]:
         """Create model(s) based on architecture."""
