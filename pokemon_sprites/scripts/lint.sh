@@ -148,6 +148,15 @@ else
     CHECKS_FAILED=1
 fi
 
+# Step 6: Professional language check
+print_status "info" "Step 6: Checking professional language standards..."
+if python scripts/vibe_coding_safeguard.py src/; then
+    print_status "success" "vibe check: professional language standards met"
+else
+    print_status "error" "vibe check: unprofessional language detected"
+    CHECKS_FAILED=$((CHECKS_FAILED + 1))
+fi
+
 # Summary
 echo
 print_status "info" "=== LINTING SUMMARY ==="

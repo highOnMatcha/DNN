@@ -2,7 +2,7 @@
 Batch Size Optimizer - Memory and Performance Based
 
 Finds optimal batch sizes by testing memory usage and training speed
-with actual models, not just theoretical calculations.
+with actual models, using empirical measurements over theoretical calculations.
 """
 
 import gc
@@ -135,17 +135,23 @@ class BatchSizeOptimizer:
                 if success:
                     print(
                         f"{batch_size:9d} | {memory_used:10.1f} | "
-                        f"{training_time:8.1f} | ✓ Success"
+                        f"{training_time:8.1f} | PASS Success"
                     )
                     results["max_stable_batch_size"] = batch_size
                 else:
+                    status_msg = "FAIL OOM"
                     print(
-                        f"{batch_size:9d} | {'N/A':>10} | {'N/A':>8} | ✗ OOM"
+                        f"{batch_size:9d} | {'N/A':>10} | {'N/A':>8} | "
+                        f"{status_msg}"
                     )
                     break
 
             except Exception:
-                print(f"{batch_size:9d} | {'N/A':>10} | {'N/A':>8} | ✗ Error")
+                status_msg = "FAIL Error"
+                print(
+                    f"{batch_size:9d} | {'N/A':>10} | {'N/A':>8} | "
+                    f"{status_msg}"
+                )
                 break
 
         return results
@@ -288,7 +294,7 @@ def optimize_batch_sizes(
                 "testing_method": "memory_testing",
             }
 
-            print(f"✓ Completed for {model_name}")
+            print(f"PASS Completed for {model_name}")
 
         except Exception as e:
             print(f"Error testing {model_name}: {e}")

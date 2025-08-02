@@ -2,7 +2,7 @@
 Model Validator - Model Instantiation Testing
 
 Validates model configurations by creating and testing the models,
-not just checking configuration syntax.
+checking configuration syntax and runtime compatibility.
 """
 
 import json
@@ -62,7 +62,7 @@ def _validate_single_model(model_name, model_config, device):
 
     except Exception as e:
         results["errors"].append(str(e))
-        print(f"  ✗ Error: {e}")
+        print(f"  FAIL Error: {e}")
 
     return results
 
@@ -82,12 +82,12 @@ def _create_generator(gen_params, device, results):
         results["generator_created"] = True
         gen_param_count = sum(p.numel() for p in generator.parameters())
         results["parameter_count"]["generator"] = gen_param_count
-        print(f"  ✓ Generator created: {gen_param_count:,} parameters")
+        print(f"  PASS Generator created: {gen_param_count:,} parameters")
         return generator
 
     except Exception as e:
         results["errors"].append(f"Generator creation failed: {str(e)}")
-        print(f"  ✗ Generator creation failed: {e}")
+        print(f"  FAIL Generator creation failed: {e}")
         return None
 
 
@@ -105,12 +105,12 @@ def _create_discriminator(disc_params, device, results):
         results["discriminator_created"] = True
         disc_param_count = sum(p.numel() for p in discriminator.parameters())
         results["parameter_count"]["discriminator"] = disc_param_count
-        print(f"  ✓ Discriminator created: {disc_param_count:,} parameters")
+        print(f"  PASS Discriminator created: {disc_param_count:,} parameters")
         return discriminator
 
     except Exception as e:
         results["errors"].append(f"Discriminator creation failed: {str(e)}")
-        print(f"  ✗ Discriminator creation failed: {e}")
+        print(f"  FAIL Discriminator creation failed: {e}")
         return None
 
 
@@ -135,7 +135,7 @@ def _test_forward_pass(generator, discriminator, gen_params, device, results):
             )  # Test discriminator with fake input
 
         results["forward_pass_works"] = True
-        print("  ✓ Forward pass successful")
+        print("  PASS Forward pass successful")
         print(f"    Generator: {test_artwork.shape} → {fake_sprite.shape}")
         print(
             f"    Discriminator: {test_artwork.shape} + "
@@ -145,7 +145,7 @@ def _test_forward_pass(generator, discriminator, gen_params, device, results):
 
     except Exception as e:
         results["errors"].append(f"Forward pass failed: {str(e)}")
-        print(f"  ✗ Forward pass failed: {e}")
+        print(f"  FAIL Forward pass failed: {e}")
         return False
 
 
@@ -193,13 +193,13 @@ def _test_backward_pass(generator, discriminator, gen_params, device, results):
         gen_optimizer.step()
 
         results["backward_pass_works"] = True
-        print("  ✓ Backward pass successful")
+        print("  PASS Backward pass successful")
         print(f"    Generator loss: {loss_gen.item():.4f}")
         print(f"    Discriminator loss: {loss_disc.item():.4f}")
 
     except Exception as e:
         results["errors"].append(f"Backward pass failed: {str(e)}")
-        print(f"  ✗ Backward pass failed: {e}")
+        print(f"  FAIL Backward pass failed: {e}")
 
 
 def validate_all_configurations(config_path):
@@ -231,9 +231,9 @@ def validate_all_configurations(config_path):
 
         # Summary for this model
         if results["forward_pass_works"] and results["backward_pass_works"]:
-            print(f"  ✅ {model_name}: VALID")
+            print(f"  PASS {model_name}: VALID")
         else:
-            print(f"  ❌ {model_name}: INVALID")
+            print(f"  FAIL {model_name}: INVALID")
         print()
 
     _print_validation_summary(validation_results)
@@ -262,12 +262,12 @@ def _print_validation_summary(validation_results):
 
     print(f"Valid models: {len(valid_models)}")
     for model in valid_models:
-        print(f"  ✓ {model}")
+        print(f"  PASS {model}")
 
     if invalid_models:
         print(f"Invalid models: {len(invalid_models)}")
         for model in invalid_models:
-            print(f"  ✗ {model}")
+            print(f"  FAIL {model}")
 
     total_params = sum(
         results.get("parameter_count", {}).get("generator", 0)

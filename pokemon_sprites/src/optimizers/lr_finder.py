@@ -269,7 +269,7 @@ def find_optimal_learning_rates(
             )
 
             optimal_lrs[model_name] = results
-            print(f"✓ Completed LR finding for {model_name}")
+            print(f"PASS Completed LR finding for {model_name}")
 
         except Exception as e:
             print(f"Error with {model_name}: {e}")

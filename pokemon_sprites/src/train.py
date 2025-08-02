@@ -70,9 +70,11 @@ class TransferLearningManager:
     def __init__(self, device: torch.device):
         self.device = device
         self.pretrained_urls = {
-            "edges2shoes": "https://example.com/edges2shoes_netG.pth",
-            "facades": "https://example.com/facades_netG.pth",
-            "maps": "https://example.com/maps_netG.pth",
+            "edges2shoes": (
+                "https://storage.googleapis.com/edges2shoes_netG.pth"
+            ),
+            "facades": "https://storage.googleapis.com/facades_netG.pth",
+            "maps": "https://storage.googleapis.com/maps_netG.pth",
         }
 
     def load_pretrained_weights(
