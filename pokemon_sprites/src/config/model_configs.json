@@ -1,359 +1,91 @@
 {
   "pix2pix_models": {
-    "pix2pix-small": {
-      "name": "pix2pix-small",
-      "description": "Small Pix2Pix model (8M parameters) - Fast training for experimentation",
-      "output_dir": "./models/pix2pix_small",
+    "lightweight-baseline": {
+      "name": "lightweight-baseline",
+      "description": "Lightweight baseline for quick experimentation - Fast training with minimal parameters",
+      "output_dir": "./models/lightweight_baseline",
       "architecture": "pix2pix",
       "parameters": {
         "generator": {
           "input_channels": 3,
-          "output_channels": 3,
+          "output_channels": 4,
           "ngf": 32,
           "n_blocks": 6,
-          "norm_layer": "batch",
-          "dropout": 0.5
+          "norm_layer": "instance",
+          "dropout": 0.3
         },
         "discriminator": {
-          "input_channels": 6,
+          "input_channels": 7,
           "ndf": 32,
-          "n_layers": 3,
-          "norm_layer": "batch"
+          "n_layers": 2,
+          "norm_layer": "instance"
         },
-        "image_size": 64,
+        "image_size": 256,
         "beta1": 0.5,
         "beta2": 0.999,
-        "lambda_l1": 100.0
+        "lambda_l1": 150.0
       }
     },
-    "pix2pix-medium": {
-      "name": "pix2pix-medium",
-      "description": "Medium Pix2Pix model (25M parameters) - Good balance of quality and speed",
-      "output_dir": "./models/pix2pix_medium",
+    "sprite-optimized": {
+      "name": "sprite-optimized",
+      "description": "State-of-the-art configuration optimized specifically for pixel art sprite generation",
+      "output_dir": "./models/sprite_optimized",
       "architecture": "pix2pix",
       "parameters": {
         "generator": {
           "input_channels": 3,
-          "output_channels": 3,
+          "output_channels": 4,
           "ngf": 64,
           "n_blocks": 9,
-          "norm_layer": "batch",
-          "dropout": 0.5
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 64,
-          "n_layers": 3,
-          "norm_layer": "batch"
-        },
-        "image_size": 64,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 100.0
-      }
-    },
-    "pix2pix-large": {
-      "name": "pix2pix-large",
-      "description": "Large Pix2Pix model (54M parameters) - High quality results",
-      "output_dir": "./models/pix2pix_large",
-      "architecture": "pix2pix",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "ngf": 128,
-          "n_blocks": 9,
-          "norm_layer": "batch",
-          "dropout": 0.5
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 128,
-          "n_layers": 4,
-          "norm_layer": "batch"
-        },
-        "image_size": 128,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 100.0
-      }
-    },
-    "pix2pix-pixel-art": {
-      "name": "pix2pix-pixel-art",
-      "description": "Optimized Pix2Pix for pixel art generation (65M parameters) - Best quality for sprites",
-      "output_dir": "./models/pix2pix_pixel_art",
-      "architecture": "pix2pix",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "ngf": 128,
-          "n_blocks": 12,
           "norm_layer": "instance",
           "dropout": 0.3,
           "use_attention": true
         },
         "discriminator": {
-          "input_channels": 6,
-          "ndf": 128,
-          "n_layers": 5,
+          "input_channels": 7,
+          "ndf": 64,
+          "n_layers": 3,
           "norm_layer": "instance",
           "use_spectral_norm": true
         },
-        "image_size": 128,
+        "image_size": 256,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 150.0,
+        "lambda_perceptual": 0.1,
+        "lambda_pixel_art": 10.0
+      }
+    },
+    "transformer-enhanced": {
+      "name": "transformer-enhanced",
+      "description": "Advanced transformer-enhanced architecture for complex artwork-to-sprite mappings",
+      "output_dir": "./models/transformer_enhanced",
+      "architecture": "pix2pix_transformer",
+      "parameters": {
+        "generator": {
+          "input_channels": 3,
+          "output_channels": 4,
+          "ngf": 64,
+          "n_blocks": 8,
+          "norm_layer": "instance",
+          "dropout": 0.2,
+          "transformer_layers": 4,
+          "attention_heads": 8,
+          "use_positional_encoding": true
+        },
+        "discriminator": {
+          "input_channels": 7,
+          "ndf": 64,
+          "n_layers": 3,
+          "norm_layer": "instance",
+          "use_spectral_norm": true
+        },
+        "image_size": 256,
         "beta1": 0.5,
         "beta2": 0.999,
         "lambda_l1": 150.0,
         "lambda_perceptual": 0.15,
-        "lambda_pixel_art": 12.0
-      }
-    },
-    "pix2pix-regularized": {
-      "name": "pix2pix-regularized",
-      "description": "Regularized Pix2Pix to prevent overfitting (25M parameters) - Anti-overfitting design",
-      "output_dir": "./models/pix2pix_regularized",
-      "architecture": "pix2pix",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "ngf": 64,
-          "n_blocks": 8,
-          "norm_layer": "instance",
-          "dropout": 0.5
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 64,
-          "n_layers": 3,
-          "norm_layer": "instance",
-          "use_spectral_norm": true,
-          "label_smoothing": 0.1
-        },
-        "image_size": 64,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 50.0
-      }
-    },
-    "pix2pix-pretrained": {
-      "name": "pix2pix-pretrained",
-      "description": "Pix2Pix with pretrained backbone (15M trainable) - Uses pretrained ResNet50 features",
-      "output_dir": "./models/pix2pix_pretrained",
-      "architecture": "pix2pix_pretrained",
-      "parameters": {
-        "backbone": "resnet50",
-        "freeze_backbone": true,
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "backbone_features": 2048,
-          "decoder_features": [512, 256, 128, 64],
-          "dropout": 0.3
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 64,
-          "n_layers": 3,
-          "norm_layer": "instance"
-        },
-        "image_size": 64,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 50.0
-      }
-    },
-    "pix2pix-vit-transformer": {
-      "name": "pix2pix-vit-transformer",
-      "description": "CNN-Transformer hybrid with transformer bottleneck for global feature learning",
-      "output_dir": "./models/pix2pix_vit_transformer",
-      "architecture": "pix2pix_vit",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "vit_model": "transformer_cnn",
-          "use_clip": false,
-          "decoder_features": [512, 256, 128, 64],
-          "dropout": 0.2
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 64,
-          "n_layers": 4,
-          "norm_layer": "instance",
-          "use_spectral_norm": true
-        },
-        "image_size": 64,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 100.0,
-        "lambda_perceptual": 0.15
-      }
-    },
-    "pix2pix-vit": {
-      "name": "pix2pix-vit",
-      "description": "Simplified CNN-based generator optimized for pixel art generation",
-      "output_dir": "./models/pix2pix_vit",
-      "architecture": "pix2pix_vit",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "vit_model": "simple_cnn",
-          "use_clip": false,
-          "decoder_features": [256, 128, 64, 32],
-          "dropout": 0.5
-        },
-        "discriminator": {
-          "input_channels": 6,
-          "ndf": 32,
-          "n_layers": 3,
-          "norm_layer": "batch",
-          "use_spectral_norm": false
-        },
-        "image_size": 64,
-        "beta1": 0.5,
-        "beta2": 0.999,
-        "lambda_l1": 100.0
-      }
-    }
-  },
-  "unet_models": {
-    "unet-small": {
-      "name": "unet-small",
-      "description": "Small U-Net model (3M parameters) - Lightweight and fast",
-      "output_dir": "./models/unet_small",
-      "architecture": "unet",
-      "parameters": {
-        "input_channels": 3,
-        "output_channels": 3,
-        "features": [32, 64, 128, 256],
-        "dropout": 0.1,
-        "attention": false,
-        "image_size": 64
-      }
-    },
-    "unet-medium": {
-      "name": "unet-medium",
-      "description": "Medium U-Net model (12M parameters) - Good quality for most use cases",
-      "output_dir": "./models/unet_medium",
-      "architecture": "unet",
-      "parameters": {
-        "input_channels": 3,
-        "output_channels": 3,
-        "features": [64, 128, 256, 512],
-        "dropout": 0.1,
-        "attention": false,
-        "image_size": 64
-      }
-    },
-    "unet-attention": {
-      "name": "unet-attention",
-      "description": "U-Net with attention mechanism (15M parameters) - Enhanced feature learning",
-      "output_dir": "./models/unet_attention",
-      "architecture": "unet",
-      "parameters": {
-        "input_channels": 3,
-        "output_channels": 3,
-        "features": [64, 128, 256, 512],
-        "dropout": 0.1,
-        "attention": true,
-        "image_size": 64
-      }
-    }
-  },
-  "cyclegan_models": {
-    "cyclegan-small": {
-      "name": "cyclegan-small",
-      "description": "Small CycleGAN model (16M parameters) - Unpaired training capability",
-      "output_dir": "./models/cyclegan_small",
-      "architecture": "cyclegan",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "ngf": 32,
-          "n_blocks": 6,
-          "norm_layer": "instance"
-        },
-        "discriminator": {
-          "input_channels": 3,
-          "ndf": 32,
-          "n_layers": 3,
-          "norm_layer": "instance"
-        },
-        "image_size": 64,
-        "lambda_cycle": 10.0,
-        "lambda_identity": 0.5,
-        "beta1": 0.5,
-        "beta2": 0.999
-      }
-    },
-    "cyclegan-medium": {
-      "name": "cyclegan-medium",
-      "description": "Medium CycleGAN model (50M parameters) - Better quality unpaired translation",
-      "output_dir": "./models/cyclegan_medium",
-      "architecture": "cyclegan",
-      "parameters": {
-        "generator": {
-          "input_channels": 3,
-          "output_channels": 3,
-          "ngf": 64,
-          "n_blocks": 9,
-          "norm_layer": "instance"
-        },
-        "discriminator": {
-          "input_channels": 3,
-          "ndf": 64,
-          "n_layers": 3,
-          "norm_layer": "instance"
-        },
-        "image_size": 64,
-        "lambda_cycle": 10.0,
-        "lambda_identity": 0.5,
-        "beta1": 0.5,
-        "beta2": 0.999
-      }
-    }
-  },
-  "diffusion_models": {
-    "ddpm-small": {
-      "name": "ddpm-small",
-      "description": "Small DDPM model (10M parameters) - Denoising diffusion for high quality",
-      "output_dir": "./models/ddpm_small",
-      "architecture": "ddpm",
-      "parameters": {
-        "channels": 3,
-        "image_size": 64,
-        "num_res_blocks": 2,
-        "attention_resolutions": [32, 16, 8],
-        "channel_mult": [1, 2, 4],
-        "num_heads": 1,
-        "use_scale_shift_norm": true,
-        "dropout": 0.1,
-        "timesteps": 1000,
-        "noise_schedule": "linear",
-        "loss_type": "l2"
-      }
-    },
-    "ddpm-medium": {
-      "name": "ddpm-medium",
-      "description": "Medium DDPM model (25M parameters) - Better quality diffusion model",
-      "output_dir": "./models/ddpm_medium",
-      "architecture": "ddpm",
-      "parameters": {
-        "channels": 3,
-        "image_size": 64,
-        "num_res_blocks": 3,
-        "attention_resolutions": [32, 16, 8],
-        "channel_mult": [1, 2, 4, 8],
-        "num_heads": 4,
-        "use_scale_shift_norm": true,
-        "dropout": 0.1,
-        "timesteps": 1000,
-        "noise_schedule": "cosine",
-        "loss_type": "l2"
+        "lambda_attention": 0.05
       }
     }
   },
@@ -385,158 +117,49 @@
       "max_samples": null,
       "gradient_accumulation_steps": 4,
       "mixed_precision": true,
-      "use_perceptual_loss": true,
-      "perceptual_weight": 0.2,
-      "use_anti_blur_loss": true,
-      "anti_blur_weight": 15.0,
-      "pixel_art_weight": 8.0,
-      "image_size": 128,
-      "description": "Production pixel art training with anti-blur losses and optimized parameters"
-    },
-    "pixel_art_optimal": {
-      "epochs": 250,
-      "batch_size": 6,
-      "learning_rate": 0.00008,
-      "eval_frequency": 8,
-      "save_frequency": 15,
-      "max_samples": null,
-      "gradient_accumulation_steps": 6,
-      "mixed_precision": true,
-      "use_perceptual_loss": true,
-      "perceptual_weight": 0.15,
-      "use_anti_blur_loss": true,
-      "anti_blur_weight": 20.0,
-      "pixel_art_weight": 12.0,
-      "image_size": 128,
-      "l1_weight": 150.0,
-      "scheduler": "cosine_warmup",
-      "warmup_epochs": 20,
-      "description": "Optimized specifically for high-quality pixel art generation with enhanced loss weighting"
-    },
-    "anti_overfitting": {
-      "epochs": 200,
-      "batch_size": 16,
-      "learning_rate": 0.0001,
-      "eval_frequency": 3,
-      "save_frequency": 10,
-      "max_samples": null,
-      "gradient_accumulation_steps": 1,
-      "mixed_precision": true,
-      "use_perceptual_loss": false,
-      "use_anti_blur_loss": true,
-      "anti_blur_weight": 1.5,
-      "pixel_art_weight": 0.5,
-      "image_size": 64,
-      "l1_weight": 100.0,
       "scheduler": "cosine_annealing",
-      "cosine_t_max": 50,
-      "cosine_eta_min": 0.00001,
       "weight_decay": 0.0005,
-      "dropout_increase": 0.4,
       "early_stopping_patience": 25,
-      "discriminator_steps": 1,
-      "generator_steps": 1,
-      "discriminator_lr_multiplier": 0.3,
       "gradient_clip_norm": 1.0,
-      "label_smoothing": 0.1,
-      "description": "Enhanced anti-overfitting: diverse augmentation, slower learning, better regularization"
-    },
-    "enhanced_training": {
-      "epochs": 300,
-      "batch_size": 12,
-      "learning_rate": 0.00008,
-      "eval_frequency": 5,
-      "save_frequency": 15,
-      "max_samples": null,
-      "gradient_accumulation_steps": 2,
-      "mixed_precision": true,
-      "use_perceptual_loss": true,
-      "perceptual_weight": 0.15,
-      "use_anti_blur_loss": true,
-      "anti_blur_weight": 2.0,
-      "pixel_art_weight": 1.0,
-      "image_size": 64,
-      "l1_weight": 100.0,
-      "scheduler": "cosine_annealing",
-      "cosine_t_max": 75,
-      "cosine_eta_min": 0.000005,
-      "weight_decay": 0.0001,
-      "dropout_increase": 0.3,
-      "early_stopping_patience": 40,
-      "discriminator_steps": 1,
-      "generator_steps": 1,
-      "discriminator_lr_multiplier": 0.5,
-      "gradient_clip_norm": 0.5,
-      "label_smoothing": 0.05,
-      "feature_matching_weight": 0.1,
-      "description": "Enhanced training with attention, perceptual loss, and better regularization for high-quality sprites"
+      "description": "Production training with progressive augmentation and regularization"
     }
   },
   "augmentation_configs": {
-    "light": {
-      "horizontal_flip_p": 0.5,
+    "minimal": {
+      "horizontal_flip_p": 0.3,
       "rotation_degrees": 0,
       "color_jitter": {
-        "input": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.08, "hue": 0.03},
-        "target": {"brightness": 0.02, "contrast": 0.02, "saturation": 0.02, "hue": 0.01}
-      },
-      "noise": {"factor": 0.02, "p": 0.15},
-      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 32, "p": 0.1}
-    },
-    "standard": {
-      "horizontal_flip_p": 0.5,
-      "rotation_degrees": 5,
-      "color_jitter": {
-        "input": {"brightness": 0.12, "contrast": 0.12, "saturation": 0.12, "hue": 0.05},
-        "target": {"brightness": 0.04, "contrast": 0.04, "saturation": 0.04, "hue": 0.02}
-      },
-      "noise": {"factor": 0.04, "p": 0.2},
-      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 24, "p": 0.15}
-    },
-    "production": {
-      "horizontal_flip_p": 0.6,
-      "rotation_degrees": 8,
-      "color_jitter": {
-        "input": {"brightness": 0.15, "contrast": 0.15, "saturation": 0.15, "hue": 0.08},
-        "target": {"brightness": 0.06, "contrast": 0.06, "saturation": 0.06, "hue": 0.03}
-      },
-      "noise": {"factor": 0.06, "p": 0.25},
-      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 20, "p": 0.2}
-    },
-    "anti_overfitting": {
-      "horizontal_flip_p": 0.8,
-      "rotation_degrees": 8,
-      "color_jitter": {
-        "input": {"brightness": 0.2, "contrast": 0.2, "saturation": 0.25, "hue": 0.08},
-        "target": {"brightness": 0.08, "contrast": 0.08, "saturation": 0.12, "hue": 0.03}
-      },
-      "noise": {"factor": 0.0, "p": 0.0},
-      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 20, "p": 0.25},
-      "elastic_transform": {"alpha": 0, "sigma": 0, "p": 0.0},
-      "random_perspective": {"distortion_scale": 0.08, "p": 0.15},
-      "random_erasing": {"p": 0.0, "scale": [0.0, 0.0], "ratio": [0.0, 0.0]},
-      "mixup": {"alpha": 0.0, "p": 0.0},
-      "random_crop_scale": {"scale": [0.92, 1.0], "p": 0.3},
-      "color_shift": {"hue_range": [-10, 10], "p": 0.25},
-      "brightness_contrast": {"brightness_factor": [0.8, 1.2], "contrast_factor": [0.8, 1.2], "p": 0.4},
-      "channel_shuffle": {"p": 0.08},
-      "vertical_flip_p": 0.15,
-      "random_affine": {"degrees": 5, "translate": [0.05, 0.05], "scale": [0.95, 1.05], "p": 0.2}
-    },
-    "none": {
-      "horizontal_flip_p": 0.0,
-      "rotation_degrees": 0,
-      "color_jitter": {
-        "input": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0},
+        "input": {"brightness": 0.05, "contrast": 0.05, "saturation": 0.05, "hue": 0.02},
         "target": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
       },
+      "cutout": {"size_ratio": 32, "p": 0.1},
       "noise": {"factor": 0.0, "p": 0.0},
       "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
-      "cutout": {"size_ratio": 0, "p": 0.0}
+      "random_affine": {"degrees": 0, "translate": [0.0, 0.0], "scale": [1.0, 1.0], "p": 0.0}
+    },
+    "moderate": {
+      "horizontal_flip_p": 0.6,
+      "rotation_degrees": 0,
+      "color_jitter": {
+        "input": {"brightness": 0.12, "contrast": 0.10, "saturation": 0.12, "hue": 0.04},
+        "target": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
+      },
+      "cutout": {"size_ratio": 24, "p": 0.2},
+      "noise": {"factor": 0.0, "p": 0.0},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "random_affine": {"degrees": 0, "translate": [0.0, 0.0], "scale": [1.0, 1.0], "p": 0.0}
+    },
+    "strong": {
+      "horizontal_flip_p": 0.8,
+      "rotation_degrees": 0,
+      "color_jitter": {
+        "input": {"brightness": 0.18, "contrast": 0.15, "saturation": 0.18, "hue": 0.06},
+        "target": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
+      },
+      "cutout": {"size_ratio": 20, "p": 0.3},
+      "noise": {"factor": 0.0, "p": 0.0},
+      "blur": {"radius_range": [0.0, 0.0], "p": 0.0},
+      "random_affine": {"degrees": 0, "translate": [0.0, 0.0], "scale": [1.0, 1.0], "p": 0.0}
     }
   }
 }
