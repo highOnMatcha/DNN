@@ -502,7 +502,7 @@ def create_data_loaders(
 
 
 def find_missing_sprites(artwork_dir: Path, sprite_dir: Path) -> List[Path]:
-    """Find Pokemon artwork that don't have corresponding BW sprites."""
+    """Find Pokemon artwork that do not have corresponding BW sprites."""
     artwork_files = list(artwork_dir.glob("*.png"))
     sprite_files = {
         f.stem.replace("_bw", "_artwork") for f in sprite_dir.glob("*.png")
@@ -523,7 +523,7 @@ def generate_missing_sprites(
     output_dir: Path,
     max_generate: int = 50,
 ) -> None:
-    """Generate sprites for Pokemon that don't have BW sprites."""
+    """Generate sprites for Pokemon that do not have BW sprites."""
     if not missing_artwork:
         logger.info("No missing sprites to generate")
         return

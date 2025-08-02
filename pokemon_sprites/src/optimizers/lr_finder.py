@@ -41,7 +41,7 @@ class LearningRateFinder:
         """Find optimal learning rate using ACTUAL training"""
 
         print(
-            f"LR Range Test: {start_lr:.2e} → {end_lr:.2e} "
+            f"LR Range Test: {start_lr:.2e} -> {end_lr:.2e} "
             f"({num_iterations} iterations)"
         )
 

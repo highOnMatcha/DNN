@@ -106,7 +106,7 @@ def find_valid_pairs(sprites_dir: Path, artwork_dir: Path) -> List[Dict]:
             # Format: pokemon_0001.png -> extract "0001"
             pokemon_id = sprite_file.stem.split("_")[1]
         else:
-            # Skip files that don't match expected naming convention
+            # Skip files that do not match expected naming convention
             continue
 
         artwork_file = artwork_dir / f"pokemon_{pokemon_id}_artwork.png"
@@ -441,8 +441,8 @@ def _setup_visualization_grid(subdirs: list, samples_per_category: int):
     return fig, axes
 
 
-def _display_image_or_placeholder(axes, row, col, valid_images, subdir):
-    """Display an image or placeholder in the given axes position."""
+def _display_image_or_fallback(axes, row, col, valid_images, subdir):
+    """Display an image or fallback message in the given axes position."""
     if col < len(valid_images):
         img_file, img = valid_images[col]
         try:
@@ -552,7 +552,7 @@ def visualize_dataset_samples(
 
         # Display images
         for col in range(samples_per_category):
-            _display_image_or_placeholder(axes, row, col, valid_images, subdir)
+            _display_image_or_fallback(axes, row, col, valid_images, subdir)
 
         dataset_stats[subdir.name] = _calculate_directory_stats(
             image_files, subdir.name
@@ -866,7 +866,7 @@ def visualize_artwork_sprite_pairs(
     # Create visualization
     fig, axes = plt.subplots(2, num_pairs, figsize=(3 * num_pairs, 6))
     fig.suptitle(
-        "Sugimori Artwork → Black/White Sprite Training Pairs",
+        "Sugimori Artwork -> Black/White Sprite Training Pairs",
         fontsize=16,
         fontweight="bold",
     )

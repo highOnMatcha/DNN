@@ -131,7 +131,7 @@ class TrainingScheduleOptimizer:
             # Print stage summary
             print(f"STAGE {i+1}: {stage['name']}")
             print(
-                f"  Resolution: {stage['input_resolution']}px → "
+                f"  Resolution: {stage['input_resolution']}px -> "
                 f"{stage['output_resolution']}px"
             )
             print(f"  Epochs: {stage['epochs']}")
@@ -354,7 +354,7 @@ def create_optimal_training_plan(config_path):
     print("FINAL RECOMMENDATIONS")
     print("=" * 60)
     print("1. Start with lightweight-baseline for quick validation")
-    print("2. Use curriculum learning: 128px → 192px → 256px")
+    print("2. Use curriculum learning: 128px -> 192px -> 256px")
     print("3. Monitor validation loss at each stage")
     print("4. Save checkpoints after each curriculum stage")
     print("5. Use mixed precision training (fp16) to save memory")

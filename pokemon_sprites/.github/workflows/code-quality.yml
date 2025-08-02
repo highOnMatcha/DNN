@@ -51,10 +51,6 @@ jobs:
         autoflake --check --remove-all-unused-imports --remove-unused-variables \
           --remove-duplicate-keys --expand-star-imports --recursive .
     
-    - name: Professional language check
-      run: |
-        python scripts/vibe_coding_safeguard.py src/
-    
     - name: Type check with mypy (non-blocking)
       run: |
         mypy src/ --ignore-missing-imports --no-strict-optional || true

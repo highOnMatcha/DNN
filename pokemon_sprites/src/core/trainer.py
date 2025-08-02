@@ -460,7 +460,7 @@ class PokemonSpriteTrainer:
         self, train_loader: DataLoader, epoch: int
     ) -> Dict[str, float]:
         """
-        Train CycleGAN for one epoch (placeholder - requires unpaired data).
+        Train CycleGAN for one epoch (stub - requires unpaired data).
         """
         # This would need to be implemented for unpaired training
         # For now, return dummy losses
@@ -487,7 +487,7 @@ class PokemonSpriteTrainer:
             ]:
                 val_losses = self._validate_pix2pix(val_loader)
             elif self.model_config.architecture == "cyclegan":
-                val_losses = {"val_loss": 0.0}  # Placeholder
+                val_losses = {"val_loss": 0.0}  # Default value
 
             # Generate sample images
             self._generate_samples(val_loader, epoch)

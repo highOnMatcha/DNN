@@ -151,7 +151,7 @@ class TestDataLoaderModelIntegration(unittest.TestCase):
         print_test_result(
             "test_data_loading_to_model_pipeline",
             True,
-            f"Pipeline: {len(pairs)} pairs → dataset → model inference",
+            f"Pipeline: {len(pairs)} pairs -> dataset -> model inference",
         )
 
     def test_augmentation_model_integration(self):
@@ -203,7 +203,7 @@ class TestDataLoaderModelIntegration(unittest.TestCase):
         print_test_result(
             "test_augmentation_model_integration",
             True,
-            "Augmentation → Generator → Discriminator pipeline working",
+            "Augmentation -> Generator -> Discriminator pipeline working",
         )
 
     def test_config_driven_pipeline(self):

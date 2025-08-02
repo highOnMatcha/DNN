@@ -136,10 +136,10 @@ def _test_forward_pass(generator, discriminator, gen_params, device, results):
 
         results["forward_pass_works"] = True
         print("  PASS Forward pass successful")
-        print(f"    Generator: {test_artwork.shape} → {fake_sprite.shape}")
+        print(f"    Generator: {test_artwork.shape} -> {fake_sprite.shape}")
         print(
             f"    Discriminator: {test_artwork.shape} + "
-            f"{test_sprite.shape} → {disc_real.shape}"
+            f"{test_sprite.shape} -> {disc_real.shape}"
         )
         return True
 

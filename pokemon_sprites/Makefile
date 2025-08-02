@@ -32,59 +32,59 @@ install:
 	pip install --upgrade pip
 	pip install -r requirements.txt
 	pip install black isort flake8 autoflake mypy pytest pytest-cov pre-commit
-	@echo "✅ Dependencies installed successfully"
+	@echo "Dependencies installed successfully"
 
 setup-hooks:
 	pre-commit install
-	@echo "✅ Git hooks installed successfully"
+	@echo "Git hooks installed successfully"
 
 # Code quality
 lint:
-	@echo "🔍 Running linting checks..."
+	@echo "Running linting checks..."
 	./scripts/lint.sh
 
 lint-fix:
-	@echo "🔧 Running linting checks with auto-fix..."
+	@echo "Running linting checks with auto-fix..."
 	./scripts/lint.sh --fix
 
 format:
-	@echo "🎨 Formatting code..."
+	@echo "Formatting code..."
 	autoflake --in-place --remove-all-unused-imports --remove-unused-variables --remove-duplicate-keys --expand-star-imports $$(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
 	isort --profile=black --line-length=120 $$(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
 	black --line-length=120 $$(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
-	@echo "✅ Code formatted successfully"
+	@echo "Code formatted successfully"
 
 check: lint test
-	@echo "✅ All quality checks passed!"
+	@echo "All quality checks passed!"
 
 # Testing
 test:
-	@echo "🧪 Running tests..."
+	@echo "Running tests..."
 	pytest tests/ -v --tb=short
 
 test-verbose:
-	@echo "🧪 Running tests with verbose output..."
+	@echo "Running tests with verbose output..."
 	pytest tests/ -vv --tb=long
 
 test-unit:
-	@echo "🧪 Running unit tests..."
+	@echo "Running unit tests..."
 	pytest tests/unit/ -v --tb=short
 
 test-integration:
-	@echo "🧪 Running integration tests..."
+	@echo "Running integration tests..."
 	pytest tests/integration/ -v --tb=short
 
 test-performance:
-	@echo "🧪 Running performance tests..."
+	@echo "Running performance tests..."
 	pytest tests/performance/ -v --tb=short
 
 test-coverage:
-	@echo "🧪 Running tests with coverage..."
+	@echo "Running tests with coverage..."
 	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term
 
 # Utilities
 clean:
-	@echo "🧹 Cleaning up..."
+	@echo "Cleaning up..."
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name "*.egg-info" -exec rm -rf {} +
@@ -94,19 +94,19 @@ clean:
 	rm -rf dist/
 	rm -rf htmlcov/
 	rm -rf .coverage
-	@echo "✅ Cleanup completed"
+	@echo "Cleanup completed"
 
 requirements:
-	@echo "📋 Generating requirements.txt..."
+	@echo "Generating requirements.txt..."
 	pip freeze > requirements.txt
-	@echo "✅ requirements.txt updated"
+	@echo "requirements.txt updated"
 
 # Development shortcuts
 dev-setup: install setup-hooks
-	@echo "🚀 Development environment setup completed!"
+	@echo "Development environment setup completed!"
 
 pre-commit: lint-fix test
-	@echo "✅ Pre-commit checks completed successfully!"
+	@echo "Pre-commit checks completed successfully!"
 
 # CI/CD helpers
 ci-install:

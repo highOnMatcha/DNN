@@ -522,7 +522,7 @@ class UNetEncoder(nn.Module):
 
         for i, down in enumerate(self.downs):
             x = down(x)
-            if i < len(self.downs) - 1:  # Don't pool the last layer
+            if i < len(self.downs) - 1:  # Do not pool the last layer
                 skip_connections.append(x)
                 x = self.pool(x)
 
@@ -681,7 +681,7 @@ class Pix2PixGenerator(nn.Module):
             x = layer(x)
             skips.append(x)
 
-        # Bottleneck (residual blocks - don't change spatial dimensions)
+        # Bottleneck (residual blocks - do not change spatial dimensions)
         for layer in self.bottleneck:
             x = layer(x)
 

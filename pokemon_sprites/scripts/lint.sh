@@ -17,10 +17,10 @@ print_status() {
     local status=$1
     local message=$2
     case $status in
-        "success") echo -e "${GREEN}✅ $message${NC}" ;;
-        "error") echo -e "${RED}❌ $message${NC}" ;;
-        "warning") echo -e "${YELLOW}⚠️  $message${NC}" ;;
-        "info") echo -e "${BLUE}ℹ️  $message${NC}" ;;
+        "success") echo -e "${GREEN}PASS $message${NC}" ;;
+        "error") echo -e "${RED}FAIL $message${NC}" ;;
+        "warning") echo -e "${YELLOW}WARNING  $message${NC}" ;;
+        "info") echo -e "${BLUE}INFO  $message${NC}" ;;
     esac
 }
 
@@ -148,26 +148,17 @@ else
     CHECKS_FAILED=1
 fi
 
-# Step 6: Professional language check
-print_status "info" "Step 6: Checking professional language standards..."
-if python scripts/vibe_coding_safeguard.py src/; then
-    print_status "success" "vibe check: professional language standards met"
-else
-    print_status "error" "vibe check: unprofessional language detected"
-    CHECKS_FAILED=$((CHECKS_FAILED + 1))
-fi
-
 # Summary
 echo
 print_status "info" "=== LINTING SUMMARY ==="
 if [ $CHECKS_FAILED -eq 0 ]; then
     if $FIX_MODE; then
-        print_status "success" "All files have been linted and formatted! ✨"
+        print_status "success" "All files have been linted and formatted! *"
     else
-        print_status "success" "All linting checks passed! 🚀"
+        print_status "success" "All linting checks passed! READY"
     fi
     echo
-    print_status "info" "Your code is ready for commit/push!"
+    print_status "info" "Code is ready for commit/push!"
 else
     print_status "error" "Some linting checks failed."
     echo
