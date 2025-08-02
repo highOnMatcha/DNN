@@ -77,13 +77,13 @@ jobs:
     - name: Run unit tests with coverage
       run: |
         cd pokemon_sprites
-        python -m pytest tests/unit/ --cov=src --cov-report=xml --cov-report=html --cov-report=term --cov-fail-under=30
+        python -m pytest tests/unit/ --cov=src --cov-report=xml --cov-report=html --cov-report=term --cov-fail-under=50
     
     - name: Check coverage threshold
       run: |
         cd pokemon_sprites
-        coverage report --fail-under=30
-        echo "Current coverage requirement: 30% (target: 50%)"
+        coverage report --fail-under=50
+        echo "Current coverage requirement: 50% (target achieved!)"
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -190,13 +190,13 @@ jobs:
     - name: Run comprehensive test suite
       run: |
         cd pokemon_sprites
-        python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=html --cov-report=term --cov-fail-under=30
+        python -m pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=html --cov-report=term --cov-fail-under=50
     
     - name: Enforce coverage threshold
       run: |
         cd pokemon_sprites
-        coverage report --fail-under=30
-        echo "✅ Coverage requirement (30%+) satisfied - Target: 50%"
+        coverage report --fail-under=50
+        echo "✅ Coverage requirement (50%+) satisfied - Target achieved!"
     
     - name: Generate test report
       run: |

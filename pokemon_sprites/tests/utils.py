@@ -53,6 +53,33 @@ class TestDataFactory:
 
         return sprite_path, artwork_path
 
+    @staticmethod
+    def create_multiple_pokemon_pairs(
+        count: int, base_dir: Path, size: tuple = (256, 256)
+    ) -> list:
+        """Create multiple test Pokemon sprite-artwork pairs."""
+        pairs = []
+        sprites_dir = base_dir / "sprites"
+        artwork_dir = base_dir / "artwork"
+
+        sprites_dir.mkdir(exist_ok=True)
+        artwork_dir.mkdir(exist_ok=True)
+
+        for i in range(count):
+            pokemon_id = f"{i+1:04d}"
+            sprite_path, artwork_path = (
+                TestDataFactory.create_test_pokemon_pair(pokemon_id, base_dir)
+            )
+            pairs.append(
+                {
+                    "pokemon_id": pokemon_id,
+                    "sprite_path": sprite_path,
+                    "artwork_path": artwork_path,
+                }
+            )
+
+        return pairs
+
 
 class TestEnvironment:
     """Manages test environment setup and cleanup."""

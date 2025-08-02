@@ -12,9 +12,8 @@ import shutil
 import sys
 import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, mock_open
 import warnings
+from pathlib import Path
 
 # Add src to path for imports
 src_path = Path(__file__).parent.parent.parent / "src"
@@ -24,11 +23,11 @@ from core.logging_config import (
     JsonFormatter,
     ModelTrainingFilter,
     TrainingProgressLogger,
+    get_log_directory,
     get_logger,
+    initialize_project_logging,
     log_model_summary,
     log_system_info,
-    initialize_project_logging,
-    get_log_directory,
 )
 
 
@@ -60,11 +59,11 @@ class TestJsonFormatter(unittest.TestCase):
             lno=10,
             msg="Test message",
             args=(),
-            exc_info=None
+            exc_info=None,
         )
-        
+
         formatted = self.formatter.format(record)
-        
+
         # Should be valid JSON
         try:
             parsed = json.loads(formatted)
@@ -84,16 +83,16 @@ class TestJsonFormatter(unittest.TestCase):
             lno=10,
             msg="Test message with extras",
             args=(),
-            exc_info=None
+            exc_info=None,
         )
-        
+
         # Add extra fields
         record.custom_field = "custom_value"
         record.metric_value = 42.5
-        
+
         formatted = self.formatter.format(record)
         parsed = json.loads(formatted)
-        
+
         self.assertIn("message", parsed)
         # Extra fields should be included if the formatter supports them
         self.assertIsInstance(parsed, dict)
@@ -101,12 +100,12 @@ class TestJsonFormatter(unittest.TestCase):
     def test_json_formatter_with_exception(self):
         """Test JsonFormatter with exception information."""
         logger = logging.getLogger("test_logger")
-        
+
         try:
             raise ValueError("Test exception")
         except ValueError:
             exc_info = sys.exc_info()
-            
+
         record = logger.makeRecord(
             name="test_logger",
             level=logging.ERROR,
@@ -114,12 +113,12 @@ class TestJsonFormatter(unittest.TestCase):
             lno=10,
             msg="Error occurred",
             args=(),
-            exc_info=exc_info
+            exc_info=exc_info,
         )
-        
+
         formatted = self.formatter.format(record)
         parsed = json.loads(formatted)
-        
+
         self.assertIn("message", parsed)
         self.assertEqual(parsed["message"], "Error occurred")
 
@@ -145,7 +144,7 @@ class TestModelTrainingFilter(unittest.TestCase):
     def test_model_training_filter_accepts_training_records(self):
         """Test filter accepts training-related log records."""
         logger = logging.getLogger("training_logger")
-        
+
         # Create training-related record
         record = logger.makeRecord(
             name="training_logger",
@@ -154,9 +153,9 @@ class TestModelTrainingFilter(unittest.TestCase):
             lno=10,
             msg="Training epoch 1 completed",
             args=(),
-            exc_info=None
+            exc_info=None,
         )
-        
+
         # Filter should accept this record
         result = self.filter.filter(record)
         self.assertTrue(result)
@@ -164,7 +163,7 @@ class TestModelTrainingFilter(unittest.TestCase):
     def test_model_training_filter_with_metric_record(self):
         """Test filter with metric-related log records."""
         logger = logging.getLogger("metrics_logger")
-        
+
         record = logger.makeRecord(
             name="metrics_logger",
             level=logging.INFO,
@@ -172,18 +171,24 @@ class TestModelTrainingFilter(unittest.TestCase):
             lno=20,
             msg="Loss: 0.5, Accuracy: 0.85",
             args=(),
-            exc_info=None
+            exc_info=None,
         )
-        
+
         result = self.filter.filter(record)
         self.assertTrue(result)
 
     def test_model_training_filter_with_different_levels(self):
         """Test filter with different log levels."""
         logger = logging.getLogger("test_logger")
-        
-        levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
-        
+
+        levels = [
+            logging.DEBUG,
+            logging.INFO,
+            logging.WARNING,
+            logging.ERROR,
+            logging.CRITICAL,
+        ]
+
         for level in levels:
             record = logger.makeRecord(
                 name="test_logger",
@@ -192,9 +197,9 @@ class TestModelTrainingFilter(unittest.TestCase):
                 lno=10,
                 msg=f"Test message at level {level}",
                 args=(),
-                exc_info=None
+                exc_info=None,
             )
-            
+
             result = self.filter.filter(record)
             self.assertIsInstance(result, (bool, int))
 
@@ -224,7 +229,7 @@ class TestTrainingProgressLogger(unittest.TestCase):
         except Exception as e:
             start_training_success = False
             print(f"Start training error: {e}")
-        
+
         self.assertTrue(start_training_success)
 
     def test_training_progress_logger_start_epoch(self):
@@ -235,7 +240,7 @@ class TestTrainingProgressLogger(unittest.TestCase):
         except Exception as e:
             start_epoch_success = False
             print(f"Start epoch error: {e}")
-        
+
         self.assertTrue(start_epoch_success)
 
     def test_training_progress_logger_log_batch(self):
@@ -246,13 +251,13 @@ class TestTrainingProgressLogger(unittest.TestCase):
                 batch=10,
                 total_batches=100,
                 losses={"total": 0.45},
-                metrics={'accuracy': 0.88, 'f1_score': 0.82}
+                metrics={"accuracy": 0.88, "f1_score": 0.82},
             )
             log_batch_success = True
         except Exception as e:
             log_batch_success = False
             print(f"Log batch error: {e}")
-        
+
         self.assertTrue(log_batch_success)
 
     def test_training_progress_logger_end_epoch(self):
@@ -262,24 +267,26 @@ class TestTrainingProgressLogger(unittest.TestCase):
                 epoch=1,
                 total_epochs=10,
                 avg_losses={"total": 0.55},
-                val_metrics={'accuracy': 0.83, 'precision': 0.79}
+                val_metrics={"accuracy": 0.83, "precision": 0.79},
             )
             end_epoch_success = True
         except Exception as e:
             end_epoch_success = False
             print(f"End epoch error: {e}")
-        
+
         self.assertTrue(end_epoch_success)
 
     def test_training_progress_logger_end_training(self):
         """Test end_training method."""
         try:
-            self.logger.end_training(final_metrics={'final_loss': 0.35, 'final_acc': 0.90})
+            self.logger.end_training(
+                final_metrics={"final_loss": 0.35, "final_acc": 0.90}
+            )
             end_training_success = True
         except Exception as e:
             end_training_success = False
             print(f"End training error: {e}")
-        
+
         self.assertTrue(end_training_success)
 
 
@@ -298,14 +305,14 @@ class TestLoggerFunctions(unittest.TestCase):
     def test_get_logger_basic(self):
         """Test get_logger function."""
         logger = get_logger("test_module")
-        
+
         self.assertIsInstance(logger, logging.Logger)
         self.assertEqual(logger.name, "test_module")
 
     def test_get_log_directory(self):
         """Test get_log_directory function."""
         log_dir = get_log_directory()
-        
+
         self.assertIsInstance(log_dir, Path)
         # Should be a valid path
         self.assertTrue(isinstance(log_dir, Path))
@@ -318,46 +325,46 @@ class TestLoggerFunctions(unittest.TestCase):
         except Exception as e:
             system_info_success = False
             print(f"System info logging error: {e}")
-        
+
         self.assertTrue(system_info_success)
 
     def test_log_model_summary(self):
         """Test log_model_summary function."""
         # Create mock model with proper torch.nn.Module structure
-        import torch
-        import torch.nn as nn
         from unittest.mock import patch
-        
+
+        import torch.nn as nn
+
         # Create a simple real model to test with
         class TestModel(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.conv1 = nn.Conv2d(3, 16, 3)
                 self.conv2 = nn.Conv2d(16, 1, 3)
-            
+
             def forward(self, x):
                 x = self.conv1(x)
                 x = self.conv2(x)
                 return x
-        
+
         mock_model = TestModel()
         # Ensure model is on CPU for testing
         mock_model = mock_model.cpu()
-        
+
         try:
             # Mock torchsummary to avoid device issues
-            with patch('torchsummary.summary') as mock_summary:
+            with patch("torchsummary.summary") as mock_summary:
                 mock_summary.return_value = None
                 log_model_summary(
                     model=mock_model,
                     input_shape=(3, 64, 64),
-                    logger_name="model_summary_test"
+                    logger_name="model_summary_test",
                 )
             model_summary_success = True
         except Exception as e:
             model_summary_success = False
             print(f"Model summary logging error: {e}")
-        
+
         self.assertTrue(model_summary_success)
 
     def test_initialize_project_logging(self):
@@ -366,13 +373,13 @@ class TestLoggerFunctions(unittest.TestCase):
             initialize_project_logging(
                 project_name="test_project",
                 log_level="INFO",
-                enable_file_logging=False  # Don't create files during test
+                enable_file_logging=False,  # Don't create files during test
             )
             init_logging_success = True
         except Exception as e:
             init_logging_success = False
             print(f"Initialize logging error: {e}")
-        
+
         self.assertTrue(init_logging_success)
 
 
@@ -395,21 +402,21 @@ class TestLoggingIntegration(unittest.TestCase):
             initialize_project_logging(
                 project_name="workflow_test",
                 log_level="INFO",
-                enable_file_logging=False
+                enable_file_logging=False,
             )
-            
+
             # 2. Get logger
-            logger = get_logger("workflow_test")
-            
+            get_logger("workflow_test")
+
             # 3. Create training progress logger
             progress_logger = TrainingProgressLogger("workflow_progress")
-            
+
             # 4. Log various training events
             log_system_info()
-            
+
             # Use simple model for testing (skip model summary to avoid issues)
             # log_model_summary is tested separately
-            
+
             # Log training progress
             progress_logger.start_training(total_epochs=2, total_batches=10)
             progress_logger.start_epoch(epoch=1, total_epochs=2)
@@ -417,22 +424,22 @@ class TestLoggingIntegration(unittest.TestCase):
                 epoch=1,
                 batch=5,
                 total_batches=10,
-                losses={'total': 0.45},
-                metrics={'acc': 0.88}
+                losses={"total": 0.45},
+                metrics={"acc": 0.88},
             )
             progress_logger.end_epoch(
                 epoch=1,
                 total_epochs=2,
-                avg_losses={'total': 0.40},
-                val_metrics={'val_acc': 0.85}
+                avg_losses={"total": 0.40},
+                val_metrics={"val_acc": 0.85},
             )
-            progress_logger.end_training({'final_loss': 0.35})
-            
+            progress_logger.end_training({"final_loss": 0.35})
+
             workflow_success = True
         except Exception as e:
             workflow_success = False
             print(f"Complete workflow error: {e}")
-        
+
         self.assertTrue(workflow_success)
 
     def test_formatter_and_filter_integration(self):
@@ -440,19 +447,19 @@ class TestLoggingIntegration(unittest.TestCase):
         # Create logger with custom formatter and filter
         logger = logging.getLogger("integration_test")
         logger.setLevel(logging.DEBUG)
-        
+
         # Create handler with JSON formatter
         handler = logging.StreamHandler(io.StringIO())
         handler.setFormatter(JsonFormatter())
         handler.addFilter(ModelTrainingFilter())
-        
+
         logger.addHandler(handler)
-        
+
         # Log messages
         logger.info("Training started")
         logger.debug("Debug message")
         logger.error("Error occurred")
-        
+
         # Should not raise exceptions
         self.assertTrue(True)
 
@@ -472,59 +479,59 @@ class TestLoggingEdgeCases(unittest.TestCase):
     def test_logging_with_none_values(self):
         """Test logging functions with None values."""
         progress_logger = TrainingProgressLogger()
-        
+
         try:
             progress_logger.log_batch(1, 1, None, None)
             none_handling_success = True
         except Exception:
             none_handling_success = False
-        
+
         # Should handle None gracefully or raise appropriate exceptions
         self.assertIsInstance(none_handling_success, bool)
 
     def test_logging_with_empty_data(self):
         """Test logging functions with empty data."""
         progress_logger = TrainingProgressLogger()
-        
+
         try:
             progress_logger.log_batch(1, 1, 0.5, {})
             progress_logger.end_epoch(1, 0.5, 0.6, {})
             empty_data_success = True
         except Exception:
             empty_data_success = False
-        
+
         self.assertIsInstance(empty_data_success, bool)
 
     def test_logging_with_large_data(self):
         """Test logging with large data structures."""
         large_metrics = {f"metric_{i}": i * 0.1 for i in range(100)}
         progress_logger = TrainingProgressLogger()
-        
+
         try:
             progress_logger.end_epoch(1, 0.5, 0.6, large_metrics)
             large_data_success = True
         except Exception:
             large_data_success = False
-        
+
         self.assertIsInstance(large_data_success, bool)
 
     def test_logging_with_special_characters(self):
         """Test logging with special characters and unicode."""
         special_metrics = {
-            'metric_with_unicode': 'αβγδε',
-            'metric_with_newlines': 'line1\nline2',
-            'metric_with_quotes': 'He said "hello"',
-            'metric_with_backslashes': 'path\\to\\file'
+            "metric_with_unicode": "αβγδε",
+            "metric_with_newlines": "line1\nline2",
+            "metric_with_quotes": 'He said "hello"',
+            "metric_with_backslashes": "path\\to\\file",
         }
-        
+
         progress_logger = TrainingProgressLogger()
-        
+
         try:
             progress_logger.end_epoch(1, 0.5, 0.6, special_metrics)
             special_chars_success = True
         except Exception:
             special_chars_success = False
-        
+
         self.assertIsInstance(special_chars_success, bool)
 
 
@@ -534,11 +541,11 @@ class TestLoggingConfiguration(unittest.TestCase):
     def test_multiple_loggers(self):
         """Test creating multiple loggers with different configurations."""
         loggers = []
-        
+
         for i in range(5):
             logger = get_logger(f"test_logger_{i}")
             loggers.append(logger)
-        
+
         # All should be different instances but work correctly
         self.assertEqual(len(loggers), 5)
         for logger in loggers:
@@ -548,17 +555,17 @@ class TestLoggingConfiguration(unittest.TestCase):
         """Test logger hierarchy behavior."""
         parent_logger = get_logger("parent")
         child_logger = get_logger("parent.child")
-        
+
         self.assertIsInstance(parent_logger, logging.Logger)
         self.assertIsInstance(child_logger, logging.Logger)
-        
+
         # Child logger name should contain parent name
         self.assertIn("parent", child_logger.name)
 
     def test_training_progress_logger_variations(self):
         """Test TrainingProgressLogger with different configurations."""
         logger_names = ["training1", "training2", "custom.training"]
-        
+
         for logger_name in logger_names:
             progress_logger = TrainingProgressLogger(logger_name)
             self.assertIsInstance(progress_logger, TrainingProgressLogger)
@@ -567,6 +574,6 @@ class TestLoggingConfiguration(unittest.TestCase):
 if __name__ == "__main__":
     # Suppress warnings for cleaner test output
     warnings.filterwarnings("ignore", category=UserWarning)
-    
+
     # Run tests with detailed output
     unittest.main(verbosity=2)

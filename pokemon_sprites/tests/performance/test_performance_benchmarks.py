@@ -42,6 +42,9 @@ from data.loaders import (
     process_image_pairs,
 )
 
+# Import test utilities
+from tests import TestDataFactory
+
 # Configure test logging
 initialize_project_logging("test_performance")
 logger = logging.getLogger(__name__)
@@ -169,7 +172,7 @@ class TestDataLoadingPerformance(unittest.TestCase):
     def _create_test_images(
         self, count: int, size: Tuple[int, int] = (256, 256)
     ):
-        """Helper method to create test images."""
+        """Helper method to create test images using shared utilities."""
         sprites_dir = self.test_dir / "sprites"
         artwork_dir = self.test_dir / "artwork"
         sprites_dir.mkdir()
@@ -178,19 +181,13 @@ class TestDataLoadingPerformance(unittest.TestCase):
         for i in range(count):
             pokemon_id = f"{i+1:04d}"
 
-            # Create sprite
-            sprite_img = Image.new(
-                "RGB", size, color=(i % 255, (i * 2) % 255, (i * 3) % 255)
-            )
+            # Create sprite using shared utility
+            sprite_img = TestDataFactory.create_test_image(size, "red")
             sprite_path = sprites_dir / f"pokemon_{pokemon_id}.png"
             sprite_img.save(sprite_path)
 
-            # Create artwork
-            artwork_img = Image.new(
-                "RGB",
-                size,
-                color=((i * 4) % 255, (i * 5) % 255, (i * 6) % 255),
-            )
+            # Create artwork using shared utility
+            artwork_img = TestDataFactory.create_test_image(size, "blue")
             artwork_path = artwork_dir / f"pokemon_{pokemon_id}_artwork.png"
             artwork_img.save(artwork_path)
 

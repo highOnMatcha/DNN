@@ -22,6 +22,8 @@ help:
 	@echo "  test-unit      Run only unit tests"
 	@echo "  test-integration Run only integration tests"
 	@echo "  test-performance Run only performance tests"
+	@echo "  test-coverage  Run tests with coverage analysis"
+	@echo "  coverage-report Show coverage report from existing data"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  clean          Clean up temporary files and caches"
@@ -54,7 +56,7 @@ format:
 	black --line-length=120 $$(find . -name "*.py" -not -path "./.venv/*" -not -path "./venv/*")
 	@echo "Code formatted successfully"
 
-check: lint test
+check: lint test-coverage
 	@echo "All quality checks passed!"
 
 # Testing
@@ -80,7 +82,16 @@ test-performance:
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term
+	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=50
+	@echo ""
+	@echo "Coverage report generated in htmlcov/ directory"
+	@echo "Current coverage requirement: 50% (target achieved!)"
+
+coverage-report:
+	@echo "Generating coverage report from existing data..."
+	coverage report --show-missing
+	@echo ""
+	@echo "For detailed HTML report, open: htmlcov/index.html"
 
 # Utilities
 clean:
@@ -121,4 +132,4 @@ ci-check:
 	autoflake --check --remove-all-unused-imports --remove-unused-variables --remove-duplicate-keys --expand-star-imports --recursive .
 
 ci-test:
-	pytest tests/ -v --tb=short --cov=src --cov-report=xml
+	pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-fail-under=50

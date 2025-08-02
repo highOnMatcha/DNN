@@ -34,6 +34,9 @@ from data.loaders import (
     save_dataset_metadata,
 )
 
+# Import test utilities
+from tests import TestDataFactory
+
 # Configure test logging
 initialize_project_logging("test_data_loaders")
 logger = logging.getLogger(__name__)
@@ -220,8 +223,8 @@ class TestFindValidPairs(unittest.TestCase):
             shutil.rmtree(self.test_dir)
 
     def _create_test_image(self, path: Path, size: tuple = (64, 64)):
-        """Helper method to create a test image."""
-        img = Image.new("RGB", size, color="red")
+        """Helper method to create a test image using shared utility."""
+        img = TestDataFactory.create_test_image(size, "red")
         img.save(path)
 
     def test_valid_pairs_found(self):

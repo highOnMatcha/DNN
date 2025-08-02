@@ -32,6 +32,9 @@ from core.models import Pix2PixDiscriminator, Pix2PixGenerator
 from data.augmentation import PairedRandomHorizontalFlip
 from data.loaders import create_training_dataset, find_valid_pairs
 
+# Import test utilities
+from tests import TestDataFactory
+
 # Configure test logging
 initialize_project_logging("test_integration")
 logger = logging.getLogger(__name__)
@@ -84,17 +87,13 @@ class TestDataLoaderModelIntegration(unittest.TestCase):
             shutil.rmtree(self.test_dir)
 
     def _create_test_image_pair(self, pokemon_id: str):
-        """Helper method to create a test image pair."""
+        """Helper method to create a test image pair using shared utilities."""
         sprite_path = self.sprites_dir / f"pokemon_{pokemon_id}.png"
         artwork_path = self.artwork_dir / f"pokemon_{pokemon_id}_artwork.png"
 
-        # Create test images with same dimensions
-        sprite_img = Image.new(
-            "RGB", (256, 256), color=(255, 0, 0)
-        )  # Red sprite
-        artwork_img = Image.new(
-            "RGB", (256, 256), color=(0, 0, 255)
-        )  # Blue artwork
+        # Create test images using shared utility
+        sprite_img = TestDataFactory.create_test_image((256, 256), "red")
+        artwork_img = TestDataFactory.create_test_image((256, 256), "blue")
 
         sprite_img.save(sprite_path)
         artwork_img.save(artwork_path)

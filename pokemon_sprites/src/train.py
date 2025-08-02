@@ -136,11 +136,11 @@ class DataEnhancer:
     ) -> List:
         """Extract dominant colors using k-means clustering"""
         pixels = image.reshape(-1, 3)
-        
+
         # Get unique colors first to determine actual cluster count
         unique_pixels = np.unique(pixels, axis=0)
         actual_clusters = min(len(unique_pixels), n_colors)
-        
+
         try:
             if actual_clusters <= 1:
                 # Return single color or fallback colors for monochrome images
@@ -148,8 +148,10 @@ class DataEnhancer:
                     return [tuple(map(int, unique_pixels[0]))]
                 else:
                     return [(255, 0, 0), (0, 255, 0), (0, 0, 255)][:n_colors]
-            
-            kmeans = KMeans(n_clusters=actual_clusters, random_state=42, n_init=10)
+
+            kmeans = KMeans(
+                n_clusters=actual_clusters, random_state=42, n_init=10
+            )
             kmeans.fit(pixels)
             return [
                 tuple(map(int, color)) for color in kmeans.cluster_centers_
