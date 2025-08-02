@@ -15,16 +15,16 @@ __author__ = "Pokemon Sprite Generation Team"
 
 # Test configuration
 TEST_CONFIG = {
-    'timeout': 300,  # 5 minutes default timeout
-    'max_memory_mb': 2048,  # 2GB memory limit
-    'performance_thresholds': {
-        'inference_time_ms': 1000,
-        'training_step_time_s': 10,
-        'memory_efficiency': 0.7
-    }
+    "timeout": 300,  # 5 minutes default timeout
+    "max_memory_mb": 2048,  # 2GB memory limit
+    "performance_thresholds": {
+        "inference_time_ms": 1000,
+        "training_step_time_s": 10,
+        "memory_efficiency": 0.7,
+    },
 }
 
 # Import test utilities
 from .test_runner import PipelineTestRunner
 
-__all__ = ['PipelineTestRunner', 'TEST_CONFIG']
+__all__ = ["PipelineTestRunner", "TEST_CONFIG"]
