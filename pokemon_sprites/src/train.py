@@ -289,13 +289,14 @@ class PokemonDataset(Dataset):
             self.augmentation = get_augmentation_config("none", image_size)
 
         # Setup basic transforms (applied after augmentation)
+        # Updated for ARGB (4-channel) processing
         self.basic_transform = transforms.Compose(
             [
                 transforms.Resize((image_size, image_size)),
                 transforms.ToTensor(),
                 transforms.Normalize(
-                    [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
-                ),  # Normalize to [-1, 1]
+                    [0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]
+                ),  # Normalize RGBA to [-1, 1]
             ]
         )
 
@@ -310,9 +311,33 @@ class PokemonDataset(Dataset):
     def get_raw_sample(self, idx: int) -> Tuple[Image.Image, Image.Image]:
         """
         Get raw PIL images without transforms (used by some augmentations).
+        Now handles ARGB (RGBA) format for transparency preservation.
         """
-        input_img = Image.open(self.input_files[idx]).convert("RGB")
-        target_img = Image.open(self.target_files[idx]).convert("RGB")
+        # Load images and convert to RGBA for 4-channel processing
+        input_img_raw = Image.open(self.input_files[idx])
+        target_img_raw = Image.open(self.target_files[idx])
+        
+        # Convert to RGBA (4 channels) to preserve transparency
+        if input_img_raw.mode == 'RGBA':
+            input_img = input_img_raw
+        elif input_img_raw.mode == 'P':
+            input_img = input_img_raw.convert('RGBA')
+        elif input_img_raw.mode in ('RGB', 'L'):
+            # Add alpha channel (fully opaque)
+            input_img = input_img_raw.convert('RGBA')
+        else:
+            input_img = input_img_raw.convert('RGBA')
+            
+        if target_img_raw.mode == 'RGBA':
+            target_img = target_img_raw
+        elif target_img_raw.mode == 'P':
+            target_img = target_img_raw.convert('RGBA')
+        elif target_img_raw.mode in ('RGB', 'L'):
+            # Add alpha channel (fully opaque)
+            target_img = target_img_raw.convert('RGBA')
+        else:
+            target_img = target_img_raw.convert('RGBA')
+            
         return input_img, target_img
 
     def __getitem__(self, idx):

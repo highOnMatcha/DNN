@@ -901,3 +901,268 @@ def visualize_artwork_sprite_pairs(
     print("- Sprite resolution: Usually 96x96 pixels")
 
     return len(matched_pairs)
+
+
+def find_matching_pairs(sprites_directory: Path, artwork_directory: Path) -> List[Tuple[Path, Path]]:
+    """
+    Find matching sprite-artwork pairs based on filename pattern.
+    
+    Args:
+        sprites_directory: Directory containing sprite files
+        artwork_directory: Directory containing artwork files
+        
+    Returns:
+        List of (artwork_path, sprite_path) pairs
+    """
+    sprite_files = list(sprites_directory.glob("*.png"))
+    artwork_files = list(artwork_directory.glob("*.png"))
+    
+    # Create lookup dictionaries based on file stems
+    sprite_lookup = {f.stem: f for f in sprite_files}
+    artwork_lookup = {f.stem: f for f in artwork_files}
+    
+    # Find matching pairs
+    matched_pairs = []
+    for file_id in sprite_lookup.keys():
+        if file_id in artwork_lookup:
+            matched_pairs.append((artwork_lookup[file_id], sprite_lookup[file_id]))
+    
+    return matched_pairs
+
+
+def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
+    """
+    Verify artwork-sprite pairs and display sample visualization.
+    
+    Args:
+        dataset_dir: Root directory containing artwork and sprites subdirectories
+        num_samples: Number of sample pairs to display
+        
+    Returns:
+        Total number of valid pairs found
+    """
+    artwork_dir = dataset_dir / "artwork"
+    sprites_dir = dataset_dir / "sprites"
+    
+    print("Verifying dataset pairs...")
+    
+    # Use find_matching_pairs to find valid pairs
+    valid_pairs_for_verification = find_matching_pairs(sprites_dir, artwork_dir)
+    
+    print(f"Found {len(valid_pairs_for_verification)} valid pairs for verification")
+    
+    if not valid_pairs_for_verification:
+        print("No valid pairs found - check data integrity")
+        return 0
+    
+    # Visual verification
+    display_pairs = valid_pairs_for_verification[:num_samples]
+    
+    if display_pairs:
+        fig, axes = plt.subplots(2, len(display_pairs), figsize=(3*len(display_pairs), 6))
+        if len(display_pairs) == 1:
+            axes = axes.reshape(2, 1)
+        
+        for i, (artwork_path, sprite_path) in enumerate(display_pairs):
+            # Load images
+            artwork = Image.open(artwork_path)
+            sprite = Image.open(sprite_path)
+            
+            # Display artwork
+            axes[0, i].imshow(artwork)
+            axes[0, i].set_title(f"Artwork #{artwork_path.stem}")
+            axes[0, i].axis('off')
+            
+            # Display sprite with proper transparency handling
+            if sprite.mode == 'RGBA':
+                sprite_array = np.array(sprite)
+                axes[1, i].imshow(sprite_array)
+                axes[1, i].set_title(f"Sprite #{sprite_path.stem} (RGBA)")
+            else:
+                axes[1, i].imshow(sprite)
+                axes[1, i].set_title(f"Sprite #{sprite_path.stem} ({sprite.mode})")
+            
+            axes[1, i].axis('off')
+            axes[1, i].set_facecolor('none')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # Print format information
+        sample_sprite = Image.open(display_pairs[0][1])
+        print(f"Sprite format: {sample_sprite.mode} ({len(sample_sprite.getbands())} channels)")
+        if sample_sprite.mode == 'RGBA':
+            print("RGBA format preserved - transparency channels available for training")
+    else:
+        print("No valid pairs found for visualization")
+    
+    return len(valid_pairs_for_verification)
+
+
+def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
+    """
+    Verify artwork-sprite pairs and display sample visualization.
+    
+    Args:
+        dataset_dir: Root directory containing artwork and sprites subdirectories
+        num_samples: Number of sample pairs to display
+        
+    Returns:
+        Total number of valid pairs found
+    """
+    import matplotlib.pyplot as plt
+    from PIL import Image
+    import numpy as np
+    
+    artwork_dir = dataset_dir / "artwork"
+    sprites_dir = dataset_dir / "sprites"
+    
+    print("Verifying dataset pairs using existing validation functions...")
+    
+    # Use the existing function to find valid pairs
+    valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
+    
+    print(f"Found {len(valid_pairs)} valid pairs using existing function")
+    
+    if not valid_pairs:
+        print("No valid pairs found - check data integrity")
+        return 0
+    
+    # Convert to file paths for visualization
+    display_pairs = []
+    for pair in valid_pairs[:num_samples]:
+        if isinstance(pair, dict):
+            artwork_path = Path(pair["artwork_path"])
+            sprite_path = Path(pair["sprite_path"])
+        else:
+            # Handle tuple format (sprite_path, artwork_path)
+            sprite_path = Path(pair[0])
+            artwork_path = Path(pair[1])
+        display_pairs.append((artwork_path, sprite_path))
+    
+    # Visual verification
+    if display_pairs:
+        fig, axes = plt.subplots(2, len(display_pairs), figsize=(3*len(display_pairs), 6))
+        if len(display_pairs) == 1:
+            axes = axes.reshape(2, 1)
+        
+        for i, (artwork_path, sprite_path) in enumerate(display_pairs):
+            # Load images
+            artwork = Image.open(artwork_path)
+            sprite = Image.open(sprite_path)
+            
+            # Display artwork
+            axes[0, i].imshow(artwork)
+            axes[0, i].set_title(f"Artwork #{artwork_path.stem}")
+            axes[0, i].axis('off')
+            
+            # Display sprite with proper transparency handling
+            if sprite.mode == 'RGBA':
+                sprite_array = np.array(sprite)
+                axes[1, i].imshow(sprite_array)
+                axes[1, i].set_title(f"Sprite #{sprite_path.stem} (RGBA)")
+            else:
+                axes[1, i].imshow(sprite)
+                axes[1, i].set_title(f"Sprite #{sprite_path.stem} ({sprite.mode})")
+            
+            axes[1, i].axis('off')
+            axes[1, i].set_facecolor('none')
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # Print format information
+        sample_sprite = Image.open(display_pairs[0][1])
+        print(f"Sprite format: {sample_sprite.mode} ({len(sample_sprite.getbands())} channels)")
+        if sample_sprite.mode == 'RGBA':
+            print("RGBA format preserved - transparency channels available for training")
+    else:
+        print("No valid pairs found for visualization")
+    
+    return len(valid_pairs)
+
+
+def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
+    """
+    Create preprocessing pipeline using existing functions from loaders.py
+    
+    Args:
+        dataset_dir: Root directory containing artwork and sprites
+        
+    Returns:
+        Tuple of (processed_directory, metadata_dict)
+    """
+    import json
+    
+    artwork_dir = dataset_dir / "artwork"
+    sprites_dir = dataset_dir / "sprites"
+    processed_dir = dataset_dir / "processed"
+    
+    # Check if preprocessing cache exists
+    metadata_path = processed_dir / "dataset_info.json"
+    if metadata_path.exists():
+        print("Found existing dataset metadata, checking...")
+        try:
+            with open(metadata_path, 'r') as f:
+                existing_metadata = json.load(f)
+            print(f"Dataset already processed with {existing_metadata.get('total_pairs', 0)} pairs")
+            print("Using cached preprocessing results")
+            return processed_dir, existing_metadata
+        except Exception as e:
+            print(f"Metadata corrupted ({e}), regenerating...")
+    
+    print("Creating training dataset using existing functions...")
+    
+    # First find valid pairs
+    valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
+    
+    if not valid_pairs:
+        print("No valid pairs found - check data integrity")
+        # Create basic metadata for empty dataset
+        metadata = {
+            "input_scales": [],
+            "output_resolution": 256,
+            "total_pairs": 0,
+            "preprocessing_method": "no_valid_pairs_found",
+            "processed_files": 0
+        }
+        
+        processed_dir.mkdir(exist_ok=True)
+        with open(processed_dir / "dataset_info.json", 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        return processed_dir, metadata
+    
+    print(f"Found {len(valid_pairs)} valid pairs for processing")
+    
+    # Create training dataset with different scales
+    scales = [128, 192, 256]
+    metadata_collection = {}
+    
+    for scale in scales:
+        scale_output_dir = processed_dir / f"input_{scale}"
+        print(f"Processing scale: {scale}x{scale}")
+        
+        dataset_info = create_training_dataset(
+            valid_pairs, 
+            scale_output_dir,
+            train_split=0.85,
+            image_size=(scale, 256)  # Input scale, output 256
+        )
+        metadata_collection[f"input_{scale}"] = dataset_info
+    
+    # Combine metadata
+    combined_metadata = {
+        "input_scales": scales,
+        "output_resolution": 256,
+        "total_pairs": len(valid_pairs),
+        "preprocessing_method": "multi_scale_input_fixed_output_using_existing_functions",
+        "scale_details": metadata_collection
+    }
+    
+    # Save metadata
+    processed_dir.mkdir(exist_ok=True)
+    with open(processed_dir / "dataset_info.json", 'w') as f:
+        json.dump(combined_metadata, f, indent=2)
+    
+    return processed_dir, combined_metadata

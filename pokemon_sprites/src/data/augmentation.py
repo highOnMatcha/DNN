@@ -3,7 +3,7 @@ Advanced data augmentation for Pokemon sprite generation.
 
 Implements comprehensive augmentation techniques for image-to-image translation
 tasks. Based on pix2pix augmentation strategies (Isola et al., 2017) with
-pixel art optimizations.
+pixel art optimizations. Updated for ARGB (RGBA) processing.
 """
 
 import random
@@ -11,8 +11,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torchvision.transforms as transforms
-import torchvision.transforms.functional as TF
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageOps
 
 
 class PairedRandomHorizontalFlip:
@@ -27,7 +26,7 @@ class PairedRandomHorizontalFlip:
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
         if random.random() < self.p:
-            return TF.hflip(input_img), TF.hflip(target_img)
+            return ImageOps.mirror(input_img), ImageOps.mirror(target_img)
         return input_img, target_img
 
 
@@ -41,249 +40,134 @@ class PairedRandomRotation:
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
         angle = random.uniform(-self.degrees, self.degrees)
-        return TF.rotate(input_img, angle), TF.rotate(target_img, angle)
+        return input_img.rotate(angle, expand=False), target_img.rotate(angle, expand=False)
 
 
-class PairedRandomCrop:
-    """Apply the same random crop to both input and target images."""
+class PairedColorJitter:
+    """Apply the same color jitter to both input and target images.
+    Updated for pixel art generation where input and target should have 
+    matching color variations to maintain correspondence."""
 
-    def __init__(self, size: Union[int, Tuple[int, int]], padding: int = 0):
-        if isinstance(size, int):
-            self.size = (size, size)
-        else:
-            self.size = size
-        self.padding = padding
+    def __init__(self, brightness: float = 0.0, contrast: float = 0.0, 
+                 saturation: float = 0.0, hue: float = 0.0):
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
 
     def __call__(
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
-        if self.padding > 0:
-            input_img = TF.pad(input_img, self.padding)
-            target_img = TF.pad(target_img, self.padding)
-
-        # Ensure crop size doesn't exceed image dimensions
-        img_width, img_height = input_img.size
-        crop_h = min(self.size[0], img_height)
-        crop_w = min(self.size[1], img_width)
-
-        # If image is smaller than desired crop size, return original images
-        if crop_h >= img_height or crop_w >= img_width:
-            return input_img, target_img
-
-        # Random crop coordinates
-        left = random.randint(0, img_width - crop_w)
-        top = random.randint(0, img_height - crop_h)
-        right = left + crop_w
-        bottom = top + crop_h
-
-        return input_img.crop((left, top, right, bottom)), target_img.crop(
-            (left, top, right, bottom)
+        # Generate the same random parameters for both images
+        jitter_transform = transforms.ColorJitter(
+            brightness=self.brightness,
+            contrast=self.contrast, 
+            saturation=self.saturation,
+            hue=self.hue
+        )
+        
+        # Handle RGBA images by separating alpha channel
+        def apply_jitter_rgba(img, jitter_transform):
+            if img.mode == 'RGBA':
+                # Split RGBA into RGB and Alpha
+                rgb_img = img.convert('RGB')
+                alpha_channel = img.split()[-1]
+                
+                # Apply color jitter to RGB only
+                jittered_rgb = jitter_transform(rgb_img)
+                
+                # Recombine with original alpha
+                jittered_rgba = Image.merge('RGBA', (*jittered_rgb.split(), alpha_channel))
+                return jittered_rgba
+            else:
+                # For non-RGBA images, apply jitter normally
+                return jitter_transform(img)
+        
+        # Apply the SAME jitter to both input and target
+        return (
+            apply_jitter_rgba(input_img, jitter_transform), 
+            apply_jitter_rgba(target_img, jitter_transform)
         )
 
 
 class PairedRandomAffine:
-    """Apply the same random affine transformation to both images."""
+    """Apply the same random affine transformation to both input and target images."""
 
-    def __init__(
-        self,
-        degrees: float = 0,
-        translate: Optional[Tuple[float, float]] = None,
-        scale: Optional[Tuple[float, float]] = None,
-        shear: Optional[float] = None,
-    ):
+    def __init__(self, degrees: float = 0, translate: Tuple[float, float] = (0.0, 0.0), 
+                 scale: Tuple[float, float] = (1.0, 1.0), p: float = 0.5):
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
-        self.shear = shear
-
-    def __call__(
-        self, input_img: Image.Image, target_img: Image.Image
-    ) -> Tuple[Image.Image, Image.Image]:
-        # Get transform parameters
-        angle = (
-            random.uniform(-self.degrees, self.degrees)
-            if self.degrees > 0
-            else 0
-        )
-
-        translate_x = translate_y = 0
-        if self.translate:
-            max_dx = self.translate[0] * input_img.width
-            max_dy = self.translate[1] * input_img.height
-            translate_x = random.uniform(-max_dx, max_dx)
-            translate_y = random.uniform(-max_dy, max_dy)
-
-        scale_factor = 1.0
-        if self.scale:
-            scale_factor = random.uniform(self.scale[0], self.scale[1])
-
-        shear_x = shear_y = 0
-        if self.shear:
-            shear_x = random.uniform(-self.shear, self.shear)
-            shear_y = random.uniform(-self.shear, self.shear)
-
-        # Apply same transformation to both images using PIL Image transforms
-        # Convert parameters to the format expected by PIL
-        transform_params = {
-            "angle": angle,
-            "translate": (int(translate_x), int(translate_y)),
-            "scale": scale_factor,
-            "shear": (shear_x, shear_y),
-        }
-
-        # Use transforms.functional with PIL Images
-        input_transformed = TF.affine(input_img, **transform_params)
-        target_transformed = TF.affine(target_img, **transform_params)
-
-        return input_transformed, target_transformed
-
-
-class IndependentColorJitter:
-    """Apply different color jittering to input and target images."""
-
-    def __init__(self, input_params: dict, target_params: dict):
-        self.input_jitter = transforms.ColorJitter(**input_params)
-        self.target_jitter = transforms.ColorJitter(**target_params)
-
-    def __call__(
-        self, input_img: Image.Image, target_img: Image.Image
-    ) -> Tuple[Image.Image, Image.Image]:
-        return self.input_jitter(input_img), self.target_jitter(target_img)
-
-
-class InputOnlyAugmentation:
-    """Apply augmentation only to input image, useful for style variations."""
-
-    def __init__(self, augmentations: List[Callable]):
-        self.augmentations = transforms.Compose(augmentations)
-
-    def __call__(
-        self, input_img: Image.Image, target_img: Image.Image
-    ) -> Tuple[Image.Image, Image.Image]:
-        return self.augmentations(input_img), target_img
-
-
-class NoiseAugmentation:
-    """Add noise to input images to improve robustness."""
-
-    def __init__(self, noise_factor: float = 0.1, p: float = 0.3):
-        self.noise_factor = noise_factor
         self.p = p
 
     def __call__(
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
         if random.random() < self.p:
-            # Convert to numpy for noise addition
-            img_array = np.array(input_img)
-            noise = np.random.normal(
-                0, self.noise_factor * 255, img_array.shape
-            ).astype(np.int16)
-            noisy_array = np.clip(
-                img_array.astype(np.int16) + noise, 0, 255
-            ).astype(np.uint8)
-            input_img = Image.fromarray(noisy_array)
-
-        return input_img, target_img
-
-
-class BlurAugmentation:
-    """Apply random blur to input images."""
-
-    def __init__(
-        self, radius_range: Tuple[float, float] = (0.5, 1.5), p: float = 0.2
-    ):
-        self.radius_range = radius_range
-        self.p = p
-
-    def __call__(
-        self, input_img: Image.Image, target_img: Image.Image
-    ) -> Tuple[Image.Image, Image.Image]:
-        if random.random() < self.p:
-            radius = random.uniform(*self.radius_range)
-            input_img = input_img.filter(
-                ImageFilter.GaussianBlur(radius=radius)
+            # Generate random parameters
+            angle = random.uniform(-self.degrees, self.degrees) if self.degrees > 0 else 0
+            translate_x = random.uniform(-self.translate[0], self.translate[0]) if self.translate[0] > 0 else 0
+            translate_y = random.uniform(-self.translate[1], self.translate[1]) if self.translate[1] > 0 else 0
+            scale_factor = random.uniform(self.scale[0], self.scale[1]) if self.scale[0] != self.scale[1] else 1.0
+            
+            # Apply same transformation to both images
+            affine_transform = transforms.RandomAffine(
+                degrees=0,  # We handle rotation manually for consistency
+                translate=(0, 0),
+                scale=(scale_factor, scale_factor)
             )
-
+            
+            # Apply transformations
+            if angle != 0:
+                input_img = input_img.rotate(angle, expand=False)
+                target_img = target_img.rotate(angle, expand=False)
+            
+            if scale_factor != 1.0:
+                input_img = affine_transform(input_img)
+                target_img = affine_transform(target_img)
+                
         return input_img, target_img
 
 
-class CutoutAugmentation:
-    """Apply cutout augmentation to input images."""
+class PairedCutout:
+    """Apply the same cutout (random erasing) to both input and target images."""
 
-    def __init__(self, cutout_size: int = 16, p: float = 0.3):
-        self.cutout_size = cutout_size
+    def __init__(self, size_ratio: int = 32, p: float = 0.1):
+        self.size_ratio = size_ratio
         self.p = p
 
     def __call__(
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
         if random.random() < self.p:
-            img_array = np.array(input_img)
-            h, w = img_array.shape[:2]
-
-            # Random position for cutout
-            y = random.randint(0, h - self.cutout_size)
-            x = random.randint(0, w - self.cutout_size)
-
-            # Apply cutout (fill with mean color)
-            mean_color = img_array.mean(axis=(0, 1)).astype(np.uint8)
-            cutout_y_end = y + self.cutout_size
-            cutout_x_end = x + self.cutout_size
-            img_array[y:cutout_y_end, x:cutout_x_end] = mean_color
-
-            input_img = Image.fromarray(img_array)
-
+            # Convert to numpy for manipulation
+            input_array = np.array(input_img)
+            target_array = np.array(target_img)
+            
+            h, w = input_array.shape[:2]
+            cut_size = max(1, min(h, w) // self.size_ratio)
+            
+            # Random position (same for both images)
+            y = random.randint(0, max(0, h - cut_size))
+            x = random.randint(0, max(0, w - cut_size))
+            
+            # Apply cutout to both images
+            input_array[y:y+cut_size, x:x+cut_size] = 0
+            target_array[y:y+cut_size, x:x+cut_size] = 0
+            
+            input_img = Image.fromarray(input_array, mode=input_img.mode)
+            target_img = Image.fromarray(target_array, mode=target_img.mode)
+            
         return input_img, target_img
 
 
-class MixupAugmentation:
-    """Mixup augmentation for both input and target images."""
-
-    def __init__(self, alpha: float = 0.2, p: float = 0.1):
-        self.alpha = alpha
-        self.p = p
-        self.dataset = None  # Will be set by the dataset
-
-    def set_dataset(self, dataset):
-        self.dataset = dataset
-
-    def __call__(
-        self, input_img: Image.Image, target_img: Image.Image
-    ) -> Tuple[Image.Image, Image.Image]:
-        if random.random() < self.p and self.dataset is not None:
-            # Get random sample from dataset
-            rand_idx = random.randint(0, len(self.dataset) - 1)
-            rand_input, rand_target = self.dataset.get_raw_sample(rand_idx)
-
-            # Resize random images to match current images
-            rand_input = rand_input.resize(input_img.size)
-            rand_target = rand_target.resize(target_img.size)
-
-            # Generate lambda
-            lam = np.random.beta(self.alpha, self.alpha)
-
-            # Convert to numpy arrays
-            input_array = np.array(input_img).astype(np.float32)
-            target_array = np.array(target_img).astype(np.float32)
-            rand_input_array = np.array(rand_input).astype(np.float32)
-            rand_target_array = np.array(rand_target).astype(np.float32)
-
-            # Mix images
-            mixed_input = (
-                lam * input_array + (1 - lam) * rand_input_array
-            ).astype(np.uint8)
-            mixed_target = (
-                lam * target_array + (1 - lam) * rand_target_array
-            ).astype(np.uint8)
-
-            return Image.fromarray(mixed_input), Image.fromarray(mixed_target)
-
-        return input_img, target_img
+# Remove NoiseAugmentation as it's counterproductive for pixel art
+# Remove MixupAugmentation as it's questionable for pixel art generation
 
 
 class AdvancedAugmentationPipeline:
-    """Advanced augmentation pipeline for Pokemon sprite generation."""
+    """Advanced augmentation pipeline for Pokemon sprite generation.
+    Updated for ARGB (RGBA) processing."""
 
     def __init__(
         self,
@@ -298,207 +182,154 @@ class AdvancedAugmentationPipeline:
             config: Augmentation configuration level
                 ("light", "standard", "production", "none")
             image_size: Target image size
-            config_dict: Optional dictionary with augmentation parameters
+            config_dict: Optional config dictionary override
         """
-        self.image_size = image_size
         self.config = config
-        self.config_dict = config_dict
-        self.augmentations = self._build_pipeline(config)
-
-    def _build_pipeline(self, config: str) -> List:
-        """Build augmentation pipeline based on configuration."""
-        # Use provided config_dict or fall back to hardcoded values
-        if self.config_dict:
-            return self._build_from_dict(self.config_dict)
-
-        # Fallback to hardcoded configurations
-        if config == "light":
-            return [
-                PairedRandomHorizontalFlip(p=0.5),
-                IndependentColorJitter(
-                    input_params={
-                        "brightness": 0.08,
-                        "contrast": 0.08,
-                        "saturation": 0.08,
-                        "hue": 0.03,
-                    },
-                    target_params={
-                        "brightness": 0.02,
-                        "contrast": 0.02,
-                        "saturation": 0.02,
-                        "hue": 0.01,
-                    },
-                ),
-                NoiseAugmentation(noise_factor=0.02, p=0.15),
-            ]
-
-        elif config == "standard":
-            return [
-                PairedRandomHorizontalFlip(p=0.5),
-                PairedRandomRotation(degrees=5),
-                IndependentColorJitter(
-                    input_params={
-                        "brightness": 0.12,
-                        "contrast": 0.12,
-                        "saturation": 0.12,
-                        "hue": 0.05,
-                    },
-                    target_params={
-                        "brightness": 0.04,
-                        "contrast": 0.04,
-                        "saturation": 0.04,
-                        "hue": 0.02,
-                    },
-                ),
-                NoiseAugmentation(noise_factor=0.04, p=0.2),
-                CutoutAugmentation(
-                    cutout_size=max(2, self.image_size // 24), p=0.15
-                ),
-            ]
-
-        elif config == "production":
-            return [
-                PairedRandomHorizontalFlip(p=0.6),
-                PairedRandomRotation(degrees=8),
-                IndependentColorJitter(
-                    input_params={
-                        "brightness": 0.15,
-                        "contrast": 0.15,
-                        "saturation": 0.15,
-                        "hue": 0.08,
-                    },
-                    target_params={
-                        "brightness": 0.06,
-                        "contrast": 0.06,
-                        "saturation": 0.06,
-                        "hue": 0.03,
-                    },
-                ),
-                NoiseAugmentation(noise_factor=0.06, p=0.25),
-                CutoutAugmentation(
-                    cutout_size=max(3, self.image_size // 20), p=0.2
-                ),
-            ]
-
+        self.image_size = image_size
+        
+        # Build augmentation pipeline based on config
+        if config_dict is not None:
+            # Use config_dict for direct configuration
+            self.transforms = self._build_from_config_dict(config_dict)
         elif config == "none":
-            return []
-
+            self.transforms = []
+        elif config == "light":
+            self.transforms = [
+                PairedRandomHorizontalFlip(p=0.5),
+                PairedColorJitter(
+                    brightness=0.05,
+                    contrast=0.05,
+                    saturation=0.05,
+                    hue=0.02,
+                ),
+            ]
+        elif config == "standard":
+            self.transforms = [
+                PairedRandomHorizontalFlip(p=0.6),
+                PairedRandomRotation(degrees=5),  # Reduced for pixel art
+                PairedColorJitter(
+                    brightness=0.08,
+                    contrast=0.08,
+                    saturation=0.08,
+                    hue=0.03,
+                ),
+                PairedRandomAffine(
+                    degrees=0,  # No rotation here since we have dedicated rotation
+                    translate=(0.05, 0.05),  # Small translation
+                    scale=(0.95, 1.05),  # Small scale variation
+                    p=0.3
+                ),
+            ]
+        elif config == "production":
+            self.transforms = [
+                PairedRandomHorizontalFlip(p=0.7),
+                PairedRandomRotation(degrees=8),  # Moderate for pixel art
+                PairedColorJitter(
+                    brightness=0.12,
+                    contrast=0.12,
+                    saturation=0.12,
+                    hue=0.05,
+                ),
+                PairedRandomAffine(
+                    degrees=0,
+                    translate=(0.08, 0.08),
+                    scale=(0.9, 1.1),
+                    p=0.4
+                ),
+                PairedCutout(size_ratio=24, p=0.2),  # Applied to both input and target
+            ]
         else:
-            return self._build_pipeline("standard")
+            raise ValueError(f"Unknown augmentation config: {config}")
 
-    def _build_from_dict(self, config_dict: Dict) -> List:
+    def _build_from_config_dict(self, config_dict: Dict):
         """Build augmentation pipeline from configuration dictionary."""
-        augmentations = []
-
-        # Horizontal flip
+        transforms = []
+        
+        # Add horizontal flip
         if config_dict.get("horizontal_flip_p", 0) > 0:
-            augmentations.append(
-                PairedRandomHorizontalFlip(p=config_dict["horizontal_flip_p"])
-            )
-
-        # Rotation
+            transforms.append(PairedRandomHorizontalFlip(p=config_dict["horizontal_flip_p"]))
+        
+        # Add rotation
         if config_dict.get("rotation_degrees", 0) > 0:
-            augmentations.append(
-                PairedRandomRotation(degrees=config_dict["rotation_degrees"])
-            )
-
-        # Color jitter
-        color_jitter = config_dict.get("color_jitter")
+            transforms.append(PairedRandomRotation(degrees=config_dict["rotation_degrees"]))
+        
+        # Add color jitter (unified format)
+        color_jitter = config_dict.get("color_jitter", {})
         if color_jitter:
-            augmentations.append(
-                IndependentColorJitter(
-                    input_params=color_jitter["input"],
-                    target_params=color_jitter["target"],
-                )
-            )
+            # Handle both old format (input/target) and new format (unified)
+            if "input" in color_jitter:
+                # Old format - use input params for paired jitter
+                jitter_params = color_jitter["input"]
+            else:
+                # New format - direct params
+                jitter_params = color_jitter
+                
+            if any(jitter_params.get(k, 0) > 0 for k in ["brightness", "contrast", "saturation", "hue"]):
+                transforms.append(PairedColorJitter(
+                    brightness=jitter_params.get("brightness", 0),
+                    contrast=jitter_params.get("contrast", 0),
+                    saturation=jitter_params.get("saturation", 0),
+                    hue=jitter_params.get("hue", 0)
+                ))
+        
+        # Add random affine
+        affine_config = config_dict.get("random_affine", {})
+        if affine_config.get("p", 0) > 0:
+            transforms.append(PairedRandomAffine(
+                degrees=affine_config.get("degrees", 0),
+                translate=tuple(affine_config.get("translate", [0.0, 0.0])),
+                scale=tuple(affine_config.get("scale", [1.0, 1.0])),
+                p=affine_config.get("p", 0)
+            ))
+        
+        # Add cutout
+        cutout_config = config_dict.get("cutout", {})
+        if cutout_config.get("p", 0) > 0:
+            transforms.append(PairedCutout(
+                size_ratio=cutout_config.get("size_ratio", 32),
+                p=cutout_config.get("p", 0)
+            ))
+        
+        return transforms
 
-        # Noise
-        noise_config = config_dict.get("noise")
-        if noise_config and noise_config.get("p", 0) > 0:
-            augmentations.append(
-                NoiseAugmentation(
-                    noise_factor=noise_config["factor"], p=noise_config["p"]
-                )
-            )
-
-        # Blur
-        blur_config = config_dict.get("blur")
-        if blur_config and blur_config.get("p", 0) > 0:
-            augmentations.append(
-                BlurAugmentation(
-                    radius_range=tuple(blur_config["radius_range"]),
-                    p=blur_config["p"],
-                )
-            )
-
-        # Cutout
-        cutout_config = config_dict.get("cutout")
-        if cutout_config and cutout_config.get("p", 0) > 0:
-            cutout_size = max(
-                4, self.image_size // cutout_config["size_ratio"]
-            )
-            augmentations.append(
-                CutoutAugmentation(
-                    cutout_size=cutout_size, p=cutout_config["p"]
-                )
-            )
-
-        return augmentations
+    def set_dataset(self, dataset):
+        """Set dataset reference for augmentations that need it."""
+        # No longer needed since we removed MixupAugmentation
+        pass
 
     def __call__(
         self, input_img: Image.Image, target_img: Image.Image
     ) -> Tuple[Image.Image, Image.Image]:
-        """Apply augmentation pipeline."""
-        for aug in self.augmentations:
-            input_img, target_img = aug(input_img, target_img)
-
+        """Apply augmentation pipeline to image pair."""
+        for transform in self.transforms:
+            input_img, target_img = transform(input_img, target_img)
         return input_img, target_img
 
-    def set_dataset(self, dataset):
-        """
-        Set dataset reference for augmentations that need it (like Mixup).
-        """
-        for aug in self.augmentations:
-            if hasattr(aug, "set_dataset"):
-                aug.set_dataset(dataset)
+
+# Configuration presets
+AUGMENTATION_PRESETS = {
+    "none": {"config": "none"},
+    "light": {"config": "light"},
+    "standard": {"config": "standard"},
+    "production": {"config": "production"},
+}
 
 
 def get_augmentation_config(
-    level: str = "standard", image_size: int = 64
+    augmentation_level: str, image_size: int = 64
 ) -> AdvancedAugmentationPipeline:
     """
-    Get augmentation configuration optimized for pixel art generation.
+    Get augmentation configuration for specified level.
 
     Args:
-        level: Augmentation level ("light", "standard", "production", "none")
+        augmentation_level: Level of augmentation ("light", "standard", 
+                          "production", "none")
         image_size: Target image size
 
     Returns:
         Configured augmentation pipeline
     """
-    # Try to load from JSON config
-    try:
-        from config.settings import load_model_configs
-
-        config_data = load_model_configs()
-        augmentation_configs = config_data.get("augmentation_configs", {})
-        config_dict = augmentation_configs.get(level)
-
-        if config_dict:
-            return AdvancedAugmentationPipeline(
-                config=level, image_size=image_size, config_dict=config_dict
-            )
-    except ImportError:
-        pass
-
-    # Fallback to hardcoded configuration
-    return AdvancedAugmentationPipeline(config=level, image_size=image_size)
-
-
-# Preset configurations for pixel art generation
-AUGMENTATION_PRESETS = {
-    "test": "light",
-    "development": "standard",
-    "production": "production",
-    "none": "none",
-}
+    return AdvancedAugmentationPipeline(
+        config=augmentation_level, 
+        image_size=image_size
+    )

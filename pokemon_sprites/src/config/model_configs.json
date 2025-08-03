@@ -7,7 +7,7 @@
       "architecture": "pix2pix",
       "parameters": {
         "generator": {
-          "input_channels": 3,
+          "input_channels": 4,
           "output_channels": 4,
           "ngf": 32,
           "n_blocks": 6,
@@ -15,7 +15,7 @@
           "dropout": 0.3
         },
         "discriminator": {
-          "input_channels": 7,
+          "input_channels": 8,
           "ndf": 32,
           "n_layers": 2,
           "norm_layer": "instance"
@@ -33,7 +33,7 @@
       "architecture": "pix2pix",
       "parameters": {
         "generator": {
-          "input_channels": 3,
+          "input_channels": 4,
           "output_channels": 4,
           "ngf": 64,
           "n_blocks": 9,
@@ -42,7 +42,7 @@
           "use_attention": true
         },
         "discriminator": {
-          "input_channels": 7,
+          "input_channels": 8,
           "ndf": 64,
           "n_layers": 3,
           "norm_layer": "instance",
@@ -63,7 +63,7 @@
       "architecture": "pix2pix_transformer",
       "parameters": {
         "generator": {
-          "input_channels": 3,
+          "input_channels": 4,
           "output_channels": 4,
           "ngf": 64,
           "n_blocks": 8,
@@ -74,7 +74,7 @@
           "use_positional_encoding": true
         },
         "discriminator": {
-          "input_channels": 7,
+          "input_channels": 8,
           "ndf": 64,
           "n_layers": 3,
           "norm_layer": "instance",
@@ -126,330 +126,173 @@
   },
   "augmentation_configs": {
     "conservative": {
-      "horizontal_flip_p": 0.3,
-      "rotation_degrees": 0,
+      "horizontal_flip_p": 0.4,
+      "rotation_degrees": 3,
       "color_jitter": {
-        "input": {
-          "brightness": 0.03,
-          "contrast": 0.02,
-          "saturation": 0.02,
-          "hue": 0.01
-        },
-        "target": {
-          "brightness": 0.0,
-          "contrast": 0.0,
-          "saturation": 0.0,
-          "hue": 0.0
-        }
+        "brightness": 0.05,
+        "contrast": 0.03,
+        "saturation": 0.03,
+        "hue": 0.015
+      },
+      "random_affine": {
+        "degrees": 0,
+        "translate": [
+          0.02,
+          0.02
+        ],
+        "scale": [
+          0.98,
+          1.02
+        ],
+        "p": 0.2
+      },
+      "cutout": {
+        "size_ratio": 64,
+        "p": 0.1
+      }
+    },
+    "minimal": {
+      "horizontal_flip_p": 0.5,
+      "rotation_degrees": 4,
+      "color_jitter": {
+        "brightness": 0.08,
+        "contrast": 0.06,
+        "saturation": 0.06,
+        "hue": 0.025
+      },
+      "random_affine": {
+        "degrees": 0,
+        "translate": [
+          0.04,
+          0.04
+        ],
+        "scale": [
+          0.96,
+          1.04
+        ],
+        "p": 0.25
       },
       "cutout": {
         "size_ratio": 48,
         "p": 0.15
-      },
-      "noise": {
-        "factor": 0.0,
-        "p": 0.0
-      },
-      "blur": {
-        "radius_range": [
-          0.0,
-          0.0
-        ],
-        "p": 0.0
-      },
-      "random_affine": {
-        "degrees": 0,
-        "translate": [
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0
-        ],
-        "p": 0.0
-      }
-    },
-    "minimal": {
-      "horizontal_flip_p": 0.3,
-      "rotation_degrees": 0,
-      "color_jitter": {
-        "input": {
-          "brightness": 0.05,
-          "contrast": 0.05,
-          "saturation": 0.05,
-          "hue": 0.02
-        },
-        "target": {
-          "brightness": 0.0,
-          "contrast": 0.0,
-          "saturation": 0.0,
-          "hue": 0.0
-        }
-      },
-      "cutout": {
-        "size_ratio": 32,
-        "p": 0.1
-      },
-      "noise": {
-        "factor": 0.0,
-        "p": 0.0
-      },
-      "blur": {
-        "radius_range": [
-          0.0,
-          0.0
-        ],
-        "p": 0.0
-      },
-      "random_affine": {
-        "degrees": 0,
-        "translate": [
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0
-        ],
-        "p": 0.0
       }
     },
     "moderate": {
       "horizontal_flip_p": 0.6,
-      "rotation_degrees": 0,
+      "rotation_degrees": 5,
       "color_jitter": {
-        "input": {
-          "brightness": 0.12,
-          "contrast": 0.1,
-          "saturation": 0.12,
-          "hue": 0.04
-        },
-        "target": {
-          "brightness": 0.0,
-          "contrast": 0.0,
-          "saturation": 0.0,
-          "hue": 0.0
-        }
-      },
-      "cutout": {
-        "size_ratio": 24,
-        "p": 0.2
-      },
-      "noise": {
-        "factor": 0.0,
-        "p": 0.0
-      },
-      "blur": {
-        "radius_range": [
-          0.0,
-          0.0
-        ],
-        "p": 0.0
+        "brightness": 0.12,
+        "contrast": 0.1,
+        "saturation": 0.12,
+        "hue": 0.04
       },
       "random_affine": {
         "degrees": 0,
         "translate": [
-          0.0,
-          0.0
+          0.05,
+          0.05
         ],
         "scale": [
-          1.0,
-          1.0
+          0.95,
+          1.05
         ],
-        "p": 0.0
+        "p": 0.3
+      },
+      "cutout": {
+        "size_ratio": 32,
+        "p": 0.2
       }
     },
     "strong": {
-      "horizontal_flip_p": 0.8,
-      "rotation_degrees": 0,
+      "horizontal_flip_p": 0.7,
+      "rotation_degrees": 8,
       "color_jitter": {
-        "input": {
-          "brightness": 0.18,
-          "contrast": 0.15,
-          "saturation": 0.18,
-          "hue": 0.06
-        },
-        "target": {
-          "brightness": 0.0,
-          "contrast": 0.0,
-          "saturation": 0.0,
-          "hue": 0.0
-        }
-      },
-      "cutout": {
-        "size_ratio": 20,
-        "p": 0.3
-      },
-      "noise": {
-        "factor": 0.0,
-        "p": 0.0
-      },
-      "blur": {
-        "radius_range": [
-          0.0,
-          0.0
-        ],
-        "p": 0.0
+        "brightness": 0.15,
+        "contrast": 0.12,
+        "saturation": 0.15,
+        "hue": 0.06
       },
       "random_affine": {
         "degrees": 0,
         "translate": [
-          0.0,
-          0.0
+          0.08,
+          0.08
         ],
         "scale": [
-          1.0,
-          1.0
+          0.9,
+          1.1
         ],
-        "p": 0.0
+        "p": 0.4
+      },
+      "cutout": {
+        "size_ratio": 24,
+        "p": 0.25
       }
     }
   },
-  "optimized_training_schedules": {
+  "training_schedules": {
     "lightweight-baseline": {
-      "description": "Optimized curriculum learning schedule for lightweight-baseline",
-      "strategy": "curriculum_learning",
-      "base_learning_rate": 0.0002,
-      "total_epochs": 75,
-      "gpu_memory_requirement": "6GB+",
-      "stages": [
-        {
-          "stage_name": "Foundation Stage",
-          "stage_number": 1,
-          "epochs": 30,
-          "input_resolution": 128,
-          "output_resolution": 256,
-          "batch_size": 45,
-          "learning_rate": 0.0002,
-          "augmentation_level": "minimal",
-          "focus": "Basic shape and structure learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 3
-        },
-        {
-          "stage_name": "Refinement Stage",
-          "stage_number": 2,
-          "epochs": 25,
-          "input_resolution": 192,
-          "output_resolution": 256,
-          "batch_size": 24,
-          "learning_rate": 0.00014,
-          "augmentation_level": "moderate",
-          "focus": "Detail enhancement and color learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        },
-        {
-          "stage_name": "Polish Stage",
-          "stage_number": 3,
-          "epochs": 20,
-          "input_resolution": 256,
-          "output_resolution": 256,
-          "batch_size": 16,
-          "learning_rate": 8e-05,
-          "augmentation_level": "strong",
-          "focus": "Fine details and precise output",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        }
-      ]
+      "model_name": "lightweight-baseline",
+      "learning_rate": 0.0015471962778709268,
+      "batch_size": 384,
+      "epochs": 200,
+      "warmup_epochs": 10,
+      "validation_frequency": 5,
+      "checkpoint_frequency": 20,
+      "lr_schedule": "cosine_annealing",
+      "weight_decay": 0.0001,
+      "beta1": 0.5,
+      "beta2": 0.999,
+      "gradient_clip": 1.0,
+      "data_format": "argb",
+      "input_channels": 4,
+      "output_channels": 4,
+      "optimization_timestamp": "2025-08-03T12:05:40.717031"
     },
     "sprite-optimized": {
-      "description": "Optimized curriculum learning schedule for sprite-optimized",
-      "strategy": "curriculum_learning",
-      "base_learning_rate": 0.00014,
-      "total_epochs": 75,
-      "gpu_memory_requirement": "6GB+",
-      "stages": [
-        {
-          "stage_name": "Foundation Stage",
-          "stage_number": 1,
-          "epochs": 30,
-          "input_resolution": 128,
-          "output_resolution": 256,
-          "batch_size": 22,
-          "learning_rate": 0.00014,
-          "augmentation_level": "minimal",
-          "focus": "Basic shape and structure learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 3
-        },
-        {
-          "stage_name": "Refinement Stage",
-          "stage_number": 2,
-          "epochs": 25,
-          "input_resolution": 192,
-          "output_resolution": 256,
-          "batch_size": 12,
-          "learning_rate": 9.799999999999998e-05,
-          "augmentation_level": "moderate",
-          "focus": "Detail enhancement and color learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        },
-        {
-          "stage_name": "Polish Stage",
-          "stage_number": 3,
-          "epochs": 20,
-          "input_resolution": 256,
-          "output_resolution": 256,
-          "batch_size": 8,
-          "learning_rate": 5.6e-05,
-          "augmentation_level": "strong",
-          "focus": "Fine details and precise output",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        }
-      ]
+      "model_name": "sprite-optimized",
+      "learning_rate": 0.02270973563526539,
+      "batch_size": 192,
+      "epochs": 200,
+      "warmup_epochs": 10,
+      "validation_frequency": 5,
+      "checkpoint_frequency": 20,
+      "lr_schedule": "cosine_annealing",
+      "weight_decay": 0.0001,
+      "beta1": 0.5,
+      "beta2": 0.999,
+      "gradient_clip": 1.0,
+      "data_format": "argb",
+      "input_channels": 4,
+      "output_channels": 4,
+      "optimization_timestamp": "2025-08-03T12:05:40.717215"
     },
     "transformer-enhanced": {
-      "description": "Optimized curriculum learning schedule for transformer-enhanced",
-      "strategy": "curriculum_learning",
-      "base_learning_rate": 0.0001,
-      "total_epochs": 75,
-      "gpu_memory_requirement": "8GB+",
-      "stages": [
-        {
-          "stage_name": "Foundation Stage",
-          "stage_number": 1,
-          "epochs": 30,
-          "input_resolution": 128,
-          "output_resolution": 256,
-          "batch_size": 11,
-          "learning_rate": 0.0001,
-          "augmentation_level": "minimal",
-          "focus": "Basic shape and structure learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 3
-        },
-        {
-          "stage_name": "Refinement Stage",
-          "stage_number": 2,
-          "epochs": 25,
-          "input_resolution": 192,
-          "output_resolution": 256,
-          "batch_size": 6,
-          "learning_rate": 7e-05,
-          "augmentation_level": "moderate",
-          "focus": "Detail enhancement and color learning",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        },
-        {
-          "stage_name": "Polish Stage",
-          "stage_number": 3,
-          "epochs": 20,
-          "input_resolution": 256,
-          "output_resolution": 256,
-          "batch_size": 4,
-          "learning_rate": 4e-05,
-          "augmentation_level": "strong",
-          "focus": "Fine details and precise output",
-          "lr_schedule": "cosine_annealing",
-          "warmup_epochs": 2
-        }
-      ]
+      "model_name": "transformer-enhanced",
+      "learning_rate": 0.0003087062427095979,
+      "batch_size": 192,
+      "epochs": 200,
+      "warmup_epochs": 10,
+      "validation_frequency": 5,
+      "checkpoint_frequency": 20,
+      "lr_schedule": "cosine_annealing",
+      "weight_decay": 0.0001,
+      "beta1": 0.5,
+      "beta2": 0.999,
+      "gradient_clip": 1.0,
+      "data_format": "argb",
+      "input_channels": 4,
+      "output_channels": 4,
+      "optimization_timestamp": "2025-08-03T12:05:40.717286"
     }
+  },
+  "optimization_metadata": {
+    "last_optimization": "2025-08-03T12:05:40.717498",
+    "optimized_models": [
+      "lightweight-baseline",
+      "sprite-optimized",
+      "transformer-enhanced"
+    ],
+    "optimization_version": "v1.0"
   }
 }
