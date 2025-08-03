@@ -327,11 +327,11 @@ class TestPokemonDataset(unittest.TestCase):
         # Test getting an item
         input_tensor, target_tensor = dataset[0]
 
-        # Verify tensor properties
+        # Verify tensor properties for ARGB
         self.assertIsInstance(input_tensor, torch.Tensor)
         self.assertIsInstance(target_tensor, torch.Tensor)
-        self.assertEqual(input_tensor.shape, (3, 64, 64))
-        self.assertEqual(target_tensor.shape, (3, 64, 64))
+        self.assertEqual(input_tensor.shape, (4, 64, 64))  # ARGB channels
+        self.assertEqual(target_tensor.shape, (4, 64, 64))  # ARGB channels
 
         print_test_result(
             "test_pokemon_dataset_getitem",

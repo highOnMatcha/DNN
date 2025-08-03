@@ -30,8 +30,10 @@ sys.path.insert(0, str(src_path))
 from core.logging_config import initialize_project_logging
 from core.models import Pix2PixDiscriminator, Pix2PixGenerator
 from data.augmentation import (
+    PairedColorJitter,  # Use PairedColorJitter instead of IndependentColorJitter
+)
+from data.augmentation import (
     AdvancedAugmentationPipeline,
-    IndependentColorJitter,
     PairedRandomHorizontalFlip,
     PairedRandomRotation,
 )
@@ -352,9 +354,8 @@ class TestAugmentationPerformance(unittest.TestCase):
         augmentations = {
             "horizontal_flip": PairedRandomHorizontalFlip(p=1.0),
             "rotation": PairedRandomRotation(degrees=15),
-            "color_jitter": IndependentColorJitter(
-                input_params={"brightness": 0.2, "contrast": 0.2},
-                target_params={"brightness": 0.2, "contrast": 0.2},
+            "color_jitter": PairedColorJitter(
+                brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
             ),
         }
 
@@ -391,23 +392,8 @@ class TestAugmentationPerformance(unittest.TestCase):
         """Test performance of augmentation pipeline."""
         # Create complex augmentation pipeline
         pipeline = AdvancedAugmentationPipeline(
-            [
-                PairedRandomHorizontalFlip(p=0.5),
-                PairedRandomRotation(degrees=15),
-                IndependentColorJitter(
-                    input_params={
-                        "brightness": 0.2,
-                        "contrast": 0.2,
-                        "saturation": 0.2,
-                    },
-                    target_params={
-                        "brightness": 0.2,
-                        "contrast": 0.2,
-                        "saturation": 0.2,
-                    },
-                ),
-            ]
-        )
+            "production"
+        )  # Use predefined production config
 
         # Test with different image sizes and batch sizes
         test_cases = [

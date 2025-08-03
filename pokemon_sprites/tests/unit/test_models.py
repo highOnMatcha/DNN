@@ -30,8 +30,8 @@ class TestModelArchitectures(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment."""
-        self.input_channels = 3
-        self.output_channels = 3
+        self.input_channels = 4  # ARGB input
+        self.output_channels = 4  # ARGB output
         self.batch_size = 2
         self.image_size = 64  # Smaller size for faster testing
 

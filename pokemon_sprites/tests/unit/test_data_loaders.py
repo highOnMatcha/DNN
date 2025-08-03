@@ -1124,6 +1124,255 @@ class TestEdgeCasesAndErrorHandling(unittest.TestCase):
         )
 
 
+class TestAdvancedDataLoaderFunctionality(unittest.TestCase):
+    """Test advanced data loader functionality to improve coverage."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.test_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
+
+    def test_image_format_conversion(self):
+        """Test conversion between different image formats."""
+        # Create images in different formats
+        rgb_img = Image.new("RGB", (64, 64), color="red")
+        rgba_img = Image.new("RGBA", (64, 64), color=(0, 255, 0, 128))
+
+        rgb_path = self.test_dir / "test_rgb.jpg"
+        rgba_path = self.test_dir / "test_rgba.png"
+
+        rgb_img.save(rgb_path)
+        rgba_img.save(rgba_path)
+
+        # Test processing mixed formats
+        pairs = [
+            {
+                "pokemon_id": "0001",
+                "sprite_path": rgb_path,
+                "artwork_path": rgba_path,
+            }
+        ]
+
+        output_dir = self.test_dir / "output"
+        successful_pairs = process_image_pairs(pairs, output_dir)
+
+        self.assertEqual(successful_pairs, 1)
+
+        # Verify output images exist and are in correct format
+        input_file = output_dir / "input_artwork" / "pokemon_0001.png"
+        target_file = output_dir / "target_sprites" / "pokemon_0001.png"
+
+        self.assertTrue(input_file.exists())
+        self.assertTrue(target_file.exists())
+
+        print_test_result(
+            "test_image_format_conversion",
+            True,
+            "Successfully handled different image formats",
+        )
+
+    def test_large_image_processing(self):
+        """Test processing of unusually large images."""
+        # Create very large artwork image
+        large_img = Image.new("RGB", (2048, 2048), color="blue")
+        small_sprite = Image.new("RGB", (32, 32), color="red")
+
+        large_path = self.test_dir / "large_artwork.png"
+        sprite_path = self.test_dir / "small_sprite.png"
+
+        large_img.save(large_path)
+        small_sprite.save(sprite_path)
+
+        pairs = [
+            {
+                "pokemon_id": "0001",
+                "sprite_path": sprite_path,
+                "artwork_path": large_path,
+            }
+        ]
+
+        output_dir = self.test_dir / "output"
+        target_size = (256, 256)
+
+        successful_pairs = process_image_pairs(pairs, output_dir, target_size)
+
+        self.assertEqual(successful_pairs, 1)
+
+        # Verify large image was properly resized
+        processed_artwork = output_dir / "input_artwork" / "pokemon_0001.png"
+        with Image.open(processed_artwork) as img:
+            self.assertEqual(img.size, target_size)
+
+        print_test_result(
+            "test_large_image_processing",
+            True,
+            f"Successfully resized large image to {target_size}",
+        )
+
+    def test_dataset_validation_functions(self):
+        """Test dataset validation and integrity checking functions."""
+        # Create a complete dataset structure
+        dataset_dir = self.test_dir / "complete_dataset"
+        train_input = dataset_dir / "train" / "input"
+        train_target = dataset_dir / "train" / "target"
+        val_input = dataset_dir / "val" / "input"
+        val_target = dataset_dir / "val" / "target"
+
+        for dir_path in [train_input, train_target, val_input, val_target]:
+            dir_path.mkdir(parents=True)
+            # Create test images
+            for i in range(3):
+                Image.new("RGB", (64, 64), color="red").save(
+                    dir_path / f"pokemon_{i:04d}.png"
+                )
+
+        # Test dataset statistics
+        stats = get_dataset_statistics(dataset_dir)
+
+        # Should detect both train and val subdirectories
+        self.assertIn("train", stats)
+        self.assertIn("val", stats)
+        # Allow for zero size in test environments
+        self.assertGreaterEqual(stats["total_size_mb"], 0)
+
+        print_test_result(
+            "test_dataset_validation_functions",
+            True,
+            f"Validated dataset structure with {stats['total_size_mb']:.2f} MB total",
+        )
+
+    @patch("matplotlib.pyplot.show")
+    def test_advanced_visualization_features(self, mock_show):
+        """Test advanced visualization features."""
+        # Create diverse test images for visualization
+        sprite_dir = self.test_dir / "sprites"
+        sprite_dir.mkdir()
+
+        # Create sprites with different characteristics
+        colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
+        sizes = [(32, 32), (64, 64), (96, 96), (128, 128)]
+
+        for i, (color, size) in enumerate(zip(colors, sizes)):
+            img = Image.new("RGB", size, color=color)
+            img.save(sprite_dir / f"sprite_{i:04d}.png")
+
+        # Test sprite analysis with diverse inputs
+        with patch("sys.stdout"):
+            analyze_sprites(sprite_dir)
+
+        # Should have generated visualizations
+        mock_show.assert_called()
+
+        print_test_result(
+            "test_advanced_visualization_features",
+            True,
+            "Generated visualizations for diverse sprite characteristics",
+        )
+
+    def test_memory_efficient_processing(self):
+        """Test memory-efficient processing of large datasets."""
+        # Create many small images to test batch processing
+        sprites_dir = self.test_dir / "sprites"
+        artwork_dir = self.test_dir / "artwork"
+        sprites_dir.mkdir()
+        artwork_dir.mkdir()
+
+        # Create 50 image pairs
+        pairs = []
+        for i in range(50):
+            pokemon_id = f"{i+1:04d}"
+            sprite_path = sprites_dir / f"pokemon_{pokemon_id}.png"
+            artwork_path = artwork_dir / f"pokemon_{pokemon_id}_artwork.png"
+
+            Image.new("RGB", (64, 64), color="red").save(sprite_path)
+            Image.new("RGB", (256, 256), color="blue").save(artwork_path)
+
+            pairs.append(
+                {
+                    "pokemon_id": pokemon_id,
+                    "sprite_path": sprite_path,
+                    "artwork_path": artwork_path,
+                }
+            )
+
+        # Process in smaller batches to test memory efficiency
+        output_dir = self.test_dir / "output"
+        successful_pairs = process_image_pairs(pairs, output_dir)
+
+        self.assertEqual(successful_pairs, 50)
+
+        # Verify all output files were created
+        input_dir = output_dir / "input_artwork"
+        target_dir = output_dir / "target_sprites"
+
+        input_files = list(input_dir.glob("*.png"))
+        target_files = list(target_dir.glob("*.png"))
+
+        self.assertEqual(len(input_files), 50)
+        self.assertEqual(len(target_files), 50)
+
+        print_test_result(
+            "test_memory_efficient_processing",
+            True,
+            f"Successfully processed {successful_pairs} image pairs efficiently",
+        )
+
+    def test_error_recovery_and_logging(self):
+        """Test error recovery and logging functionality."""
+        # Create mixed valid/invalid pairs
+        valid_sprite = self.test_dir / "valid_sprite.png"
+        valid_artwork = self.test_dir / "valid_artwork.png"
+        invalid_sprite = self.test_dir / "invalid_sprite.png"
+        invalid_artwork = self.test_dir / "invalid_artwork.png"
+
+        # Create valid images
+        Image.new("RGB", (64, 64), color="red").save(valid_sprite)
+        Image.new("RGB", (256, 256), color="blue").save(valid_artwork)
+
+        # Create invalid files
+        invalid_sprite.write_text("not an image")
+        invalid_artwork.write_text("also not an image")
+
+        pairs = [
+            {
+                "pokemon_id": "0001",
+                "sprite_path": valid_sprite,
+                "artwork_path": valid_artwork,
+            },
+            {
+                "pokemon_id": "0002",
+                "sprite_path": invalid_sprite,
+                "artwork_path": invalid_artwork,
+            },
+            {
+                "pokemon_id": "0003",
+                "sprite_path": valid_sprite,
+                "artwork_path": invalid_artwork,  # Mixed valid/invalid
+            },
+        ]
+
+        output_dir = self.test_dir / "output"
+
+        # Should process only valid pairs and skip invalid ones
+        successful_pairs = process_image_pairs(pairs, output_dir)
+
+        self.assertEqual(successful_pairs, 1)  # Only first pair is fully valid
+
+        # Verify only valid pair was processed
+        input_files = list((output_dir / "input_artwork").glob("*.png"))
+        self.assertEqual(len(input_files), 1)
+
+        print_test_result(
+            "test_error_recovery_and_logging",
+            True,
+            f"Successfully recovered from errors, processed {successful_pairs}/3 pairs",
+        )
+
+
 if __name__ == "__main__":
     print(f"\n{TestColors.BLUE}{TestColors.BOLD}{'='*70}{TestColors.RESET}")
     print(

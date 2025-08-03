@@ -316,28 +316,28 @@ class PokemonDataset(Dataset):
         # Load images and convert to RGBA for 4-channel processing
         input_img_raw = Image.open(self.input_files[idx])
         target_img_raw = Image.open(self.target_files[idx])
-        
+
         # Convert to RGBA (4 channels) to preserve transparency
-        if input_img_raw.mode == 'RGBA':
+        if input_img_raw.mode == "RGBA":
             input_img = input_img_raw
-        elif input_img_raw.mode == 'P':
-            input_img = input_img_raw.convert('RGBA')
-        elif input_img_raw.mode in ('RGB', 'L'):
+        elif input_img_raw.mode == "P":
+            input_img = input_img_raw.convert("RGBA")
+        elif input_img_raw.mode in ("RGB", "L"):
             # Add alpha channel (fully opaque)
-            input_img = input_img_raw.convert('RGBA')
+            input_img = input_img_raw.convert("RGBA")
         else:
-            input_img = input_img_raw.convert('RGBA')
-            
-        if target_img_raw.mode == 'RGBA':
+            input_img = input_img_raw.convert("RGBA")
+
+        if target_img_raw.mode == "RGBA":
             target_img = target_img_raw
-        elif target_img_raw.mode == 'P':
-            target_img = target_img_raw.convert('RGBA')
-        elif target_img_raw.mode in ('RGB', 'L'):
+        elif target_img_raw.mode == "P":
+            target_img = target_img_raw.convert("RGBA")
+        elif target_img_raw.mode in ("RGB", "L"):
             # Add alpha channel (fully opaque)
-            target_img = target_img_raw.convert('RGBA')
+            target_img = target_img_raw.convert("RGBA")
         else:
-            target_img = target_img_raw.convert('RGBA')
-            
+            target_img = target_img_raw.convert("RGBA")
+
         return input_img, target_img
 
     def __getitem__(self, idx):

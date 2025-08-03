@@ -30,9 +30,9 @@ class MockDiscriminator(nn.Module):
 
     def __init__(self):
         super().__init__()
-        # Process concatenated input (3+4=7 channels) -> 1 output
+        # Process concatenated input (4+4=8 channels for ARGB) -> 1 output
         self.model = nn.Sequential(
-            nn.Conv2d(7, 16, 3, 1, 1),  # 7 channels input
+            nn.Conv2d(8, 16, 3, 1, 1),  # 8 channels input for ARGB
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
@@ -51,9 +51,11 @@ class MockGenerator(nn.Module):
 
     def __init__(self):
         super().__init__()
-        # Simple conv layers that maintain spatial dimensions
+        # Simple conv layers that maintain spatial dimensions for ARGB
         self.model = nn.Sequential(
-            nn.Conv2d(3, 4, 1, 1, 0),  # Convert 3 channels to 4 channels
+            nn.Conv2d(
+                4, 4, 1, 1, 0
+            ),  # Convert 4 ARGB channels to 4 ARGB channels
         )
 
     def forward(self, x):
@@ -111,8 +113,8 @@ class TestLearningRateFinderBasic(unittest.TestCase):
             # Test getting a batch
             artwork, sprite = next(iter(dataloader))
             self.assertEqual(artwork.shape[0], 2)  # batch_size
-            self.assertEqual(artwork.shape[1], 3)  # input channels
-            self.assertEqual(sprite.shape[1], 4)  # output channels
+            self.assertEqual(artwork.shape[1], 4)  # ARGB input channels
+            self.assertEqual(sprite.shape[1], 4)  # ARGB output channels
 
             logger.info("[SUCCESS] Synthetic dataloader creation works")
         except Exception as e:
@@ -235,5 +237,4 @@ class TestLearningRateFinderBasic(unittest.TestCase):
             self.fail(f"_analyze_results fallback failed: {e}")
 
 
-if __name__ == "__main__":
-    unittest.main()
+

@@ -264,14 +264,16 @@ def optimize_batch_sizes(
             # Create models with ARGB config parameters
             generator = Pix2PixGenerator(
                 input_channels=gen_params.get("input_channels", 4),  # ARGB
-                output_channels=gen_params.get("output_channels", 4), # ARGB
+                output_channels=gen_params.get("output_channels", 4),  # ARGB
                 ngf=gen_params.get("ngf", 64),
                 n_blocks=gen_params.get("n_blocks", 6),
                 norm_layer=gen_params.get("norm_layer", "batch"),
                 dropout=gen_params.get("dropout", 0.5),
             )
             discriminator = Pix2PixDiscriminator(
-                input_channels=disc_params.get("input_channels", 8),  # ARGB input+target
+                input_channels=disc_params.get(
+                    "input_channels", 8
+                ),  # ARGB input+target
                 ndf=disc_params.get("ndf", 64),
                 n_layers=disc_params.get("n_layers", 3),
                 norm_layer=disc_params.get("norm_layer", "instance"),
@@ -279,34 +281,38 @@ def optimize_batch_sizes(
             )
 
             # Test batch sizes with error handling
-            optimizer = BatchSizeOptimizer(generator, discriminator, str(device))
-            
+            optimizer = BatchSizeOptimizer(
+                generator, discriminator, str(device)
+            )
+
             try:
                 results = optimizer.find_optimal_batch_size(
                     initial_max_batch_size=512,  # Optimized for 16GB GPU
                     input_size=test_input_size,
                     output_size=test_output_size,
                 )
-                
+
                 batch_recommendations[model_name] = {
                     "recommended": results["recommended_batch_size"],
                     "optimal": results["optimal_batch_size"],
                     "max_stable": results["max_stable_batch_size"],
                     "testing_method": "memory_testing",
-                    "status": "success"
+                    "status": "success",
                 }
-                
+
                 print(f"PASS Completed for {model_name}")
-                
+
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
-                    print(f"GPU memory limit reached for {model_name}, using conservative values")
+                    print(
+                        f"GPU memory limit reached for {model_name}, using conservative values"
+                    )
                     batch_recommendations[model_name] = {
                         "recommended": 4,
                         "optimal": 4,
                         "max_stable": 4,
                         "testing_method": "memory_limited",
-                        "status": "memory_limited"
+                        "status": "memory_limited",
                     }
                 else:
                     raise e
@@ -319,8 +325,10 @@ def optimize_batch_sizes(
                 "max_stable": 4,
                 "testing_method": "fallback",
                 "status": "error",
-                "error": str(e)
+                "error": str(e),
             }
 
-    print(f"\nBatch optimization completed for {len(batch_recommendations)} models")
+    print(
+        f"\nBatch optimization completed for {len(batch_recommendations)} models"
+    )
     return batch_recommendations

@@ -30,9 +30,9 @@ class MockDiscriminator(nn.Module):
 
     def __init__(self):
         super().__init__()
-        # Process concatenated input (3+4=7 channels) -> 1 output
+        # Process concatenated input (4+4=8 channels for ARGB) -> 1 output
         self.model = nn.Sequential(
-            nn.Conv2d(7, 16, 3, 1, 1),  # 7 channels input
+            nn.Conv2d(8, 16, 3, 1, 1),  # 8 channels input for ARGB
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
@@ -51,9 +51,11 @@ class MockGenerator(nn.Module):
 
     def __init__(self):
         super().__init__()
-        # Simple conv layers that maintain spatial dimensions
+        # Simple conv layers that maintain spatial dimensions for ARGB
         self.model = nn.Sequential(
-            nn.Conv2d(3, 4, 1, 1, 0),  # Convert 3 channels to 4 channels
+            nn.Conv2d(
+                4, 4, 1, 1, 0
+            ),  # Convert 4 ARGB channels to 4 ARGB channels
         )
 
     def forward(self, x):
@@ -107,12 +109,12 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
                 with patch("torch.cuda.max_memory_allocated") as mock_max:
                     mock_max.return_value = 100 * 1024 * 1024  # 100MB
 
-                    # Test with small sizes
+                    # Test with small sizes for ARGB
                     success, memory_used, training_time = (
                         optimizer._test_single_batch_size(
                             batch_size=1,
-                            input_size=(3, 32, 32),
-                            output_size=(4, 32, 32),
+                            input_size=(4, 32, 32),  # ARGB input
+                            output_size=(4, 32, 32),  # ARGB output
                         )
                     )
 
@@ -141,7 +143,7 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
 
             # Test with conservative parameters
             results = optimizer.find_optimal_batch_size(
-                initial_max_batch_size=4,
+                initial_max_batch_size=64,  # Test larger batch sizes for 16GB GPU optimization
                 input_size=(3, 32, 32),
                 output_size=(4, 32, 32),
             )
@@ -163,5 +165,3 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
             self.fail(f"find_optimal_batch_size method failed: {e}")
 
 
-if __name__ == "__main__":
-    unittest.main()

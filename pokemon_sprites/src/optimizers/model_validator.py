@@ -72,13 +72,15 @@ def _create_generator(gen_params, device, results):
     try:
         generator = Pix2PixGenerator(
             input_channels=gen_params.get("input_channels", 4),  # Fixed: ARGB
-            output_channels=gen_params.get("output_channels", 4),  # Fixed: ARGB  
+            output_channels=gen_params.get(
+                "output_channels", 4
+            ),  # Fixed: ARGB
             ngf=gen_params.get("ngf", 64),
             n_blocks=gen_params.get("n_blocks", 6),
             norm_layer=gen_params.get("norm_layer", "batch"),
             dropout=gen_params.get("dropout", 0.5),
         )
-        
+
         # Move to device after creation
         generator = generator.to(device)
 
@@ -89,9 +91,13 @@ def _create_generator(gen_params, device, results):
         print(f"    Generator parameters: {gen_params_count:,}")
 
         # Test forward pass - ensure input is on same device as model
-        test_input = torch.randn(2, 4, 256, 256, device=device)  # Create directly on device
+        test_input = torch.randn(
+            2, 4, 256, 256, device=device
+        )  # Create directly on device
         output = generator(test_input)
-        print(f"    Forward pass successful: {test_input.shape} -> {output.shape}")
+        print(
+            f"    Forward pass successful: {test_input.shape} -> {output.shape}"
+        )
 
         results["generator_created"] = True
         results["parameter_count"]["generator"] = gen_params_count
@@ -109,12 +115,16 @@ def _create_discriminator(disc_params, device, results):
     """Create and validate discriminator model."""
     try:
         discriminator = Pix2PixDiscriminator(
-            input_channels=disc_params.get("input_channels", 8),  # Fixed: ARGB input+target
+            input_channels=disc_params.get(
+                "input_channels", 8
+            ),  # Fixed: ARGB input+target
             ndf=disc_params.get("ndf", 64),
             n_layers=disc_params.get("n_layers", 3),
             norm_layer=disc_params.get("norm_layer", "instance"),
             use_spectral_norm=disc_params.get("use_spectral_norm", False),
-        ).to(device)  # Move to device
+        ).to(
+            device
+        )  # Move to device
 
         # Test discriminator forward pass
         disc_params_count = sum(
@@ -125,13 +135,17 @@ def _create_discriminator(disc_params, device, results):
         # Test forward pass with dummy input+target pair - create tensors directly on device
         test_input = torch.randn(2, 4, 256, 256, device=device)  # ARGB input
         test_target = torch.randn(2, 4, 256, 256, device=device)  # ARGB target
-        
+
         output = discriminator(test_input, test_target)
-        print(f"    Forward pass successful: {test_input.shape} + {test_target.shape} -> {output.shape}")
+        print(
+            f"    Forward pass successful: {test_input.shape} + {test_target.shape} -> {output.shape}"
+        )
 
         results["discriminator_created"] = True
         results["parameter_count"]["discriminator"] = disc_params_count
-        print(f"  PASS Discriminator created: {disc_params_count:,} parameters")
+        print(
+            f"  PASS Discriminator created: {disc_params_count:,} parameters"
+        )
         return discriminator
 
     except Exception as e:
@@ -148,7 +162,10 @@ def _test_forward_pass(generator, discriminator, gen_params, device, results):
         discriminator.eval()
 
         test_artwork = torch.randn(
-            2, gen_params.get("input_channels", 4), 256, 256  # Fixed: ARGB default
+            2,
+            gen_params.get("input_channels", 4),
+            256,
+            256,  # Fixed: ARGB default
         ).to(device)
         test_sprite = torch.randn(
             2, gen_params.get("output_channels", 4), 256, 256

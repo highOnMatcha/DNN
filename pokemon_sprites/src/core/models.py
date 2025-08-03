@@ -1115,222 +1115,256 @@ def count_total_parameters(model) -> int:
 def analyze_model_architectures(config_path=None):
     """
     Analyze available model architectures for Pokemon sprite generation.
-    
+
     Evaluates model configurations for artwork-to-sprite translation,
     focusing on ARGB support, parameter efficiency, and pixel art optimization.
-    
+
     Args:
         config_path: Path to model configuration file
-        
+
     Returns:
         dict: Analysis results with suitability scores
     """
     import json
     from pathlib import Path
+
     from core.logging_config import get_logger
-    
+
     logger = get_logger("model_analyzer")
-    
+
     if config_path is None:
-        config_file_path = Path(__file__).parent.parent / "config" / "model_configs.json"
+        config_file_path = (
+            Path(__file__).parent.parent / "config" / "model_configs.json"
+        )
     else:
         config_file_path = Path(config_path)
-    
+
     if not config_file_path.exists():
         logger.error(f"Model configuration file not found: {config_file_path}")
         return {}
-    
+
     try:
-        with open(config_file_path, 'r') as f:
+        with open(config_file_path, "r") as f:
             config = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return {}
-    
+
     logger.info("Analyzing curated model architectures for sprite generation")
-    
-    model_configs = config.get('pix2pix_models', {})
+
+    model_configs = config.get("pix2pix_models", {})
     if not model_configs:
         logger.warning("No model configurations found")
         return {}
-    
+
     logger.info(f"Found {len(model_configs)} model configurations")
-    
+
     architecture_analysis = {}
-    analysis_results = {
-        'models': {},
-        'recommendations': {},
-        'summary': {}
-    }
-    
+    analysis_results = {"models": {}, "recommendations": {}, "summary": {}}
+
     for model_name, model_config in model_configs.items():
         logger.info(f"Analyzing model: {model_name}")
-        
-        params = model_config.get('parameters', {})
-        generator = params.get('generator', {})
-        discriminator = params.get('discriminator', {})
-        
+
+        params = model_config.get("parameters", {})
+        generator = params.get("generator", {})
+        discriminator = params.get("discriminator", {})
+
         # Calculate parameter estimates
-        ngf = generator.get('ngf', 64)
-        ndf = discriminator.get('ndf', 64)
-        n_blocks = generator.get('n_blocks', 9)
-        d_layers = discriminator.get('n_layers', 3)
-        
+        ngf = generator.get("ngf", 64)
+        ndf = discriminator.get("ndf", 64)
+        n_blocks = generator.get("n_blocks", 9)
+        d_layers = discriminator.get("n_layers", 3)
+
         # Architecture-specific parameter calculation
-        if 'transformer' in model_name:
-            transformer_layers = generator.get('transformer_layers', 4)
-            attention_heads = generator.get('attention_heads', 8)
-            transformer_params = transformer_layers * attention_heads * ngf * ngf * 4
-            base_params = ngf * ngf * (n_blocks * 2 + 8) + ndf * ndf * (d_layers + 2)
+        if "transformer" in model_name:
+            transformer_layers = generator.get("transformer_layers", 4)
+            attention_heads = generator.get("attention_heads", 8)
+            transformer_params = (
+                transformer_layers * attention_heads * ngf * ngf * 4
+            )
+            base_params = ngf * ngf * (n_blocks * 2 + 8) + ndf * ndf * (
+                d_layers + 2
+            )
             total_params = (base_params + transformer_params) / 1000000
         else:
             gen_params = ngf * ngf * (n_blocks * 2 + 10)
             disc_params = ndf * ndf * (d_layers + 2)
             total_params = (gen_params + disc_params) / 1000000
-        
+
         # Task-specific assessment for ARGB sprite generation
         suitability_score = 0
         strengths = []
         considerations = []
-        
+
         # ARGB support check (critical for transparency)
-        if generator.get('input_channels', 3) == 4 and generator.get('output_channels', 3) == 4:
+        if (
+            generator.get("input_channels", 3) == 4
+            and generator.get("output_channels", 3) == 4
+        ):
             strengths.append("Native ARGB transparency support")
             suitability_score += 2
         else:
             considerations.append("Missing ARGB channel support")
-        
+
         # Image size compatibility
-        if params.get('image_size', 0) == 256:
+        if params.get("image_size", 0) == 256:
             strengths.append("Direct 256px output compatibility")
             suitability_score += 1
         else:
             considerations.append("Non-standard image size")
-        
+
         # Loss function optimization for pixel art
-        if params.get('lambda_l1', 0) >= 150:
+        if params.get("lambda_l1", 0) >= 150:
             strengths.append("Strong pixel-level accuracy emphasis")
             suitability_score += 1
-        
-        if params.get('lambda_pixel_art', 0) > 0:
+
+        if params.get("lambda_pixel_art", 0) > 0:
             strengths.append("Specialized pixel art loss function")
             suitability_score += 1
-        
+
         # Model-specific analysis
-        if 'lightweight' in model_name:
-            strengths.extend([
-                "Fast training and inference",
-                "Low memory requirements",
-                "Reduced overfitting risk"
-            ])
+        if "lightweight" in model_name:
+            strengths.extend(
+                [
+                    "Fast training and inference",
+                    "Low memory requirements",
+                    "Reduced overfitting risk",
+                ]
+            )
             considerations.append("May lack capacity for complex mappings")
             suitability_score += 2  # Good for baseline
             role = "BASELINE - Quick validation and debugging"
-            
-        elif 'sprite-optimized' in model_name:
-            if generator.get('use_attention', False):
+
+        elif "sprite-optimized" in model_name:
+            if generator.get("use_attention", False):
                 strengths.append("Attention mechanism for detail preservation")
                 suitability_score += 1
-            if discriminator.get('use_spectral_norm', False):
-                strengths.append("Spectral normalization for training stability")
+            if discriminator.get("use_spectral_norm", False):
+                strengths.append(
+                    "Spectral normalization for training stability"
+                )
                 suitability_score += 1
-            strengths.extend([
-                "Optimized loss weights for pixel art",
-                "Balanced complexity for dataset size"
-            ])
+            strengths.extend(
+                [
+                    "Optimized loss weights for pixel art",
+                    "Balanced complexity for dataset size",
+                ]
+            )
             suitability_score += 2  # Recommended primary model
             role = "PRIMARY - Main production model"
-            
-        elif 'transformer' in model_name:
-            strengths.extend([
-                "Long-range dependency modeling",
-                "Advanced attention mechanisms",
-                "State-of-the-art architecture"
-            ])
-            considerations.extend([
-                "Higher computational requirements",
-                "May need careful regularization"
-            ])
+
+        elif "transformer" in model_name:
+            strengths.extend(
+                [
+                    "Long-range dependency modeling",
+                    "Advanced attention mechanisms",
+                    "State-of-the-art architecture",
+                ]
+            )
+            considerations.extend(
+                [
+                    "Higher computational requirements",
+                    "May need careful regularization",
+                ]
+            )
             suitability_score += 1  # Experimental but promising
             role = "ADVANCED - Experimental state-of-the-art"
         else:
             role = "GENERAL - Standard configuration"
-        
+
         # Normalization preference for style transfer
-        if generator.get('norm_layer', 'batch') == 'instance':
-            strengths.append("Instance normalization (better for style transfer)")
+        if generator.get("norm_layer", "batch") == "instance":
+            strengths.append(
+                "Instance normalization (better for style transfer)"
+            )
             suitability_score += 1
-        
+
         # Store detailed analysis
         model_analysis = {
-            'description': model_config.get('description', 'No description'),
-            'architecture': model_config.get('architecture', 'pix2pix'),
-            'role': role,
-            'estimated_parameters_m': round(total_params, 1),
-            'suitability_score': suitability_score,
-            'max_score': 12,
-            'strengths': strengths,
-            'considerations': considerations,
-            'generator_config': {
-                'channels': f"{generator.get('input_channels', 3)} -> {generator.get('output_channels', 3)}",
-                'base_features': ngf,
-                'blocks': n_blocks,
-                'normalization': generator.get('norm_layer', 'instance'),
-                'dropout': generator.get('dropout', 0.3)
+            "description": model_config.get("description", "No description"),
+            "architecture": model_config.get("architecture", "pix2pix"),
+            "role": role,
+            "estimated_parameters_m": round(total_params, 1),
+            "suitability_score": suitability_score,
+            "max_score": 12,
+            "strengths": strengths,
+            "considerations": considerations,
+            "generator_config": {
+                "channels": f"{generator.get('input_channels', 3)} -> {generator.get('output_channels', 3)}",
+                "base_features": ngf,
+                "blocks": n_blocks,
+                "normalization": generator.get("norm_layer", "instance"),
+                "dropout": generator.get("dropout", 0.3),
             },
-            'discriminator_config': {
-                'input_channels': discriminator.get('input_channels', 6),
-                'base_features': ndf,
-                'layers': d_layers,
-                'spectral_norm': discriminator.get('use_spectral_norm', False)
+            "discriminator_config": {
+                "input_channels": discriminator.get("input_channels", 6),
+                "base_features": ndf,
+                "layers": d_layers,
+                "spectral_norm": discriminator.get("use_spectral_norm", False),
             },
-            'training_config': {
-                'image_size': params.get('image_size', 256),
-                'l1_weight': params.get('lambda_l1', 100),
-                'perceptual_weight': params.get('lambda_perceptual', 0),
-                'pixel_art_weight': params.get('lambda_pixel_art', 0)
-            }
+            "training_config": {
+                "image_size": params.get("image_size", 256),
+                "l1_weight": params.get("lambda_l1", 100),
+                "perceptual_weight": params.get("lambda_perceptual", 0),
+                "pixel_art_weight": params.get("lambda_pixel_art", 0),
+            },
         }
-        
-        analysis_results['models'][model_name] = model_analysis
+
+        analysis_results["models"][model_name] = model_analysis
         architecture_analysis[model_name] = suitability_score
-        
+
         logger.info(f"Model {model_name}: Score {suitability_score}/12")
-    
+
     # Generate recommendations
-    sorted_models = sorted(architecture_analysis.items(), key=lambda x: x[1], reverse=True)
-    
+    sorted_models = sorted(
+        architecture_analysis.items(), key=lambda x: x[1], reverse=True
+    )
+
     recommendations = []
     for i, (model_name, score) in enumerate(sorted_models, 1):
-        model_info = analysis_results['models'][model_name]
+        model_info = analysis_results["models"][model_name]
         use_case = (
-            'Start here for quick results' if i == 1 
-            else 'Optimize after baseline' if i == 2 
-            else 'Experiment if resources allow'
+            "Start here for quick results"
+            if i == 1
+            else (
+                "Optimize after baseline"
+                if i == 2
+                else "Experiment if resources allow"
+            )
         )
-        
-        recommendations.append({
-            'rank': i,
-            'model_name': model_name,
-            'role': model_info['role'],
-            'score': f"{score}/12",
-            'use_case': use_case,
-            'parameters_m': model_info['estimated_parameters_m']
-        })
-    
-    analysis_results['recommendations'] = recommendations
-    
+
+        recommendations.append(
+            {
+                "rank": i,
+                "model_name": model_name,
+                "role": model_info["role"],
+                "score": f"{score}/12",
+                "use_case": use_case,
+                "parameters_m": model_info["estimated_parameters_m"],
+            }
+        )
+
+    analysis_results["recommendations"] = recommendations
+
     # Summary statistics
-    analysis_results['summary'] = {
-        'total_models': len(model_configs),
-        'argb_compatible': sum(1 for m in analysis_results['models'].values() 
-                              if '4 -> 4' in m['generator_config']['channels']),
-        'pixel_art_optimized': sum(1 for m in analysis_results['models'].values() 
-                                  if m['training_config']['pixel_art_weight'] > 0),
-        'recommended_sequence': [r['model_name'] for r in recommendations[:3]]
+    analysis_results["summary"] = {
+        "total_models": len(model_configs),
+        "argb_compatible": sum(
+            1
+            for m in analysis_results["models"].values()
+            if "4 -> 4" in m["generator_config"]["channels"]
+        ),
+        "pixel_art_optimized": sum(
+            1
+            for m in analysis_results["models"].values()
+            if m["training_config"]["pixel_art_weight"] > 0
+        ),
+        "recommended_sequence": [r["model_name"] for r in recommendations[:3]],
     }
-    
+
     logger.info("Model architecture analysis completed")
-    logger.info(f"Recommended training sequence: {' -> '.join(analysis_results['summary']['recommended_sequence'])}")
-    
+    logger.info(
+        f"Recommended training sequence: {' -> '.join(analysis_results['summary']['recommended_sequence'])}"
+    )
+
     return analysis_results

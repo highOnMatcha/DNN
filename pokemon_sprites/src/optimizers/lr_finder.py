@@ -245,7 +245,7 @@ def find_optimal_learning_rates(
 
             # Create models with config parameters
             generator = Pix2PixGenerator(
-                input_channels=gen_params.get("input_channels", 4),  
+                input_channels=gen_params.get("input_channels", 4),
                 output_channels=gen_params.get("output_channels", 4),
                 ngf=gen_params.get("ngf", 64),
                 n_blocks=gen_params.get("n_blocks", 9),
@@ -253,7 +253,7 @@ def find_optimal_learning_rates(
                 dropout=gen_params.get("dropout", 0.3),
             )
             discriminator = Pix2PixDiscriminator(
-                input_channels=disc_params.get("input_channels", 8), 
+                input_channels=disc_params.get("input_channels", 8),
                 ndf=disc_params.get("ndf", 64),
                 n_layers=disc_params.get("n_layers", 3),
                 norm_layer=disc_params.get("norm_layer", "instance"),
