@@ -100,7 +100,7 @@ class PairedColorJitter:
 
 
 class PairedRandomAffine:
-    """Apply the same random affine transformation to both input and target images."""
+    """Apply same random affine transformation to input and target images."""
 
     def __init__(
         self,
@@ -160,7 +160,7 @@ class PairedRandomAffine:
 
 
 class PairedCutout:
-    """Apply the same cutout (random erasing) to both input and target images."""
+    """Apply same cutout (random erasing) to input and target images."""
 
     def __init__(self, size_ratio: int = 32, p: float = 0.1):
         self.size_ratio = size_ratio
@@ -244,7 +244,7 @@ class AdvancedAugmentationPipeline:
                     hue=0.03,
                 ),
                 PairedRandomAffine(
-                    degrees=0,  # No rotation here since we have dedicated rotation
+                    degrees=0,  # No rotation - we have dedicated rotation
                     translate=(0.05, 0.05),  # Small translation
                     scale=(0.95, 1.05),  # Small scale variation
                     p=0.3,

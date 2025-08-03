@@ -163,5 +163,3 @@ class TestBatchSizeOptimizerBasic(unittest.TestCase):
         except Exception as e:
             logger.error(f"[FAIL] find_optimal_batch_size method failed: {e}")
             self.fail(f"find_optimal_batch_size method failed: {e}")
-
-

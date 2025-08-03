@@ -939,7 +939,7 @@ def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
     Verify artwork-sprite pairs and display sample visualization.
 
     Args:
-        dataset_dir: Root directory containing artwork and sprites subdirectories
+        dataset_dir: Root directory containing artwork and sprites
         num_samples: Number of sample pairs to display
 
     Returns:
@@ -956,7 +956,8 @@ def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
     )
 
     print(
-        f"Found {len(valid_pairs_for_verification)} valid pairs for verification"
+        f"Found {len(valid_pairs_for_verification)} valid pairs for "
+        f"verification"
     )
 
     if not valid_pairs_for_verification:
@@ -1003,107 +1004,18 @@ def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
         # Print format information
         sample_sprite = Image.open(display_pairs[0][1])
         print(
-            f"Sprite format: {sample_sprite.mode} ({len(sample_sprite.getbands())} channels)"
+            f"Sprite format: {sample_sprite.mode} "
+            f"({len(sample_sprite.getbands())} channels)"
         )
         if sample_sprite.mode == "RGBA":
             print(
-                "RGBA format preserved - transparency channels available for training"
+                "RGBA format preserved - transparency channels available "
+                "for training"
             )
     else:
         print("No valid pairs found for visualization")
 
     return len(valid_pairs_for_verification)
-
-
-def verify_dataset_pairs(dataset_dir: Path, num_samples: int = 6) -> int:
-    """
-    Verify artwork-sprite pairs and display sample visualization.
-
-    Args:
-        dataset_dir: Root directory containing artwork and sprites subdirectories
-        num_samples: Number of sample pairs to display
-
-    Returns:
-        Total number of valid pairs found
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    from PIL import Image
-
-    artwork_dir = dataset_dir / "artwork"
-    sprites_dir = dataset_dir / "sprites"
-
-    print("Verifying dataset pairs using existing validation functions...")
-
-    # Use the existing function to find valid pairs
-    valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
-
-    print(f"Found {len(valid_pairs)} valid pairs using existing function")
-
-    if not valid_pairs:
-        print("No valid pairs found - check data integrity")
-        return 0
-
-    # Convert to file paths for visualization
-    display_pairs = []
-    for pair in valid_pairs[:num_samples]:
-        if isinstance(pair, dict):
-            artwork_path = Path(pair["artwork_path"])
-            sprite_path = Path(pair["sprite_path"])
-        else:
-            # Handle tuple format (sprite_path, artwork_path)
-            sprite_path = Path(pair[0])
-            artwork_path = Path(pair[1])
-        display_pairs.append((artwork_path, sprite_path))
-
-    # Visual verification
-    if display_pairs:
-        fig, axes = plt.subplots(
-            2, len(display_pairs), figsize=(3 * len(display_pairs), 6)
-        )
-        if len(display_pairs) == 1:
-            axes = axes.reshape(2, 1)
-
-        for i, (artwork_path, sprite_path) in enumerate(display_pairs):
-            # Load images
-            artwork = Image.open(artwork_path)
-            sprite = Image.open(sprite_path)
-
-            # Display artwork
-            axes[0, i].imshow(artwork)
-            axes[0, i].set_title(f"Artwork #{artwork_path.stem}")
-            axes[0, i].axis("off")
-
-            # Display sprite with proper transparency handling
-            if sprite.mode == "RGBA":
-                sprite_array = np.array(sprite)
-                axes[1, i].imshow(sprite_array)
-                axes[1, i].set_title(f"Sprite #{sprite_path.stem} (RGBA)")
-            else:
-                axes[1, i].imshow(sprite)
-                axes[1, i].set_title(
-                    f"Sprite #{sprite_path.stem} ({sprite.mode})"
-                )
-
-            axes[1, i].axis("off")
-            axes[1, i].set_facecolor("none")
-
-        plt.tight_layout()
-        plt.show()
-
-        # Print format information
-        sample_sprite = Image.open(display_pairs[0][1])
-        print(
-            f"Sprite format: {sample_sprite.mode} ({len(sample_sprite.getbands())} channels)"
-        )
-        if sample_sprite.mode == "RGBA":
-            print(
-                "RGBA format preserved - transparency channels available for training"
-            )
-    else:
-        print("No valid pairs found for visualization")
-
-    return len(valid_pairs)
 
 
 def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
@@ -1130,7 +1042,8 @@ def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
             with open(metadata_path, "r") as f:
                 existing_metadata = json.load(f)
             print(
-                f"Dataset already processed with {existing_metadata.get('total_pairs', 0)} pairs"
+                f"Dataset already processed with "
+                f"{existing_metadata.get('total_pairs', 0)} pairs"
             )
             print("Using cached preprocessing results")
             return processed_dir, existing_metadata
@@ -1182,7 +1095,9 @@ def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
         "input_scales": scales,
         "output_resolution": 256,
         "total_pairs": len(valid_pairs),
-        "preprocessing_method": "multi_scale_input_fixed_output_using_existing_functions",
+        "preprocessing_method": (
+            "multi_scale_input_fixed_output_using_existing_functions"
+        ),
         "scale_details": metadata_collection,
     }
 

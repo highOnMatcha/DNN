@@ -466,7 +466,7 @@ class TestModelValidatorIntegration(unittest.TestCase):
         """Set up test environment with temporary configuration files."""
         self.test_dir = tempfile.mkdtemp()
         self.device = torch.device("cpu")
-        
+
         # Create test configuration file
         self.test_config = {
             "pix2pix_models": {
@@ -480,18 +480,18 @@ class TestModelValidatorIntegration(unittest.TestCase):
                             "ngf": 32,
                             "n_blocks": 6,
                             "norm_layer": "instance",
-                            "dropout": 0.3
+                            "dropout": 0.3,
                         },
                         "discriminator": {
                             "input_channels": 8,
                             "ndf": 32,
                             "n_layers": 2,
-                            "norm_layer": "instance"
-                        }
-                    }
+                            "norm_layer": "instance",
+                        },
+                    },
                 },
                 "test-standard": {
-                    "name": "test-standard", 
+                    "name": "test-standard",
                     "description": "Test standard model",
                     "parameters": {
                         "generator": {
@@ -500,19 +500,19 @@ class TestModelValidatorIntegration(unittest.TestCase):
                             "ngf": 64,
                             "n_blocks": 9,
                             "norm_layer": "instance",
-                            "dropout": 0.5
+                            "dropout": 0.5,
                         },
                         "discriminator": {
                             "input_channels": 8,
                             "ndf": 64,
                             "n_layers": 3,
-                            "norm_layer": "instance"
-                        }
-                    }
-                }
+                            "norm_layer": "instance",
+                        },
+                    },
+                },
             }
         }
-        
+
         self.config_path = Path(self.test_dir) / "test_model_configs.json"
         with open(self.config_path, "w") as f:
             json.dump(self.test_config, f, indent=2)
@@ -520,24 +520,27 @@ class TestModelValidatorIntegration(unittest.TestCase):
     def tearDown(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.test_dir)
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_validate_all_configurations_workflow(self, mock_print):
         """Test complete model validation workflow with configuration file."""
         logger.info("[TEST] Testing complete validation workflow")
-        
+
         try:
             from optimizers.model_validator import validate_all_configurations
-            
+
             # Test full validation workflow
-            validation_results = validate_all_configurations(str(self.config_path))
-            
+            validation_results = validate_all_configurations(
+                str(self.config_path)
+            )
+
             # Verify results structure
             self.assertIsInstance(validation_results, dict)
             self.assertIn("test-lightweight", validation_results)
             self.assertIn("test-standard", validation_results)
-            
+
             # Verify each model result has required fields
             for model_name, results in validation_results.items():
                 self.assertIn("model_name", results)
@@ -548,100 +551,104 @@ class TestModelValidatorIntegration(unittest.TestCase):
                 self.assertIn("backward_pass_works", results)
                 self.assertIn("errors", results)
                 self.assertIn("parameter_count", results)
-                
+
                 # Check parameter count structure
                 self.assertIn("generator", results["parameter_count"])
                 self.assertIn("discriminator", results["parameter_count"])
-            
+
             logger.info("[PASS] Complete validation workflow tested")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] Validation workflow test failed: {e}")
             self.fail(f"Validation workflow test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_optimize_model_config_function(self, mock_print):
         """Test optimize_model_config function wrapper."""
         logger.info("[TEST] Testing optimize_model_config function")
-        
+
         try:
             from optimizers.model_validator import optimize_model_config
-            
+
             # Test the wrapper function
             results = optimize_model_config(str(self.config_path))
-            
+
             # Should return same structure as validate_all_configurations
             self.assertIsInstance(results, dict)
             self.assertGreater(len(results), 0)
-            
+
             logger.info("[PASS] optimize_model_config function tested")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] optimize_model_config test failed: {e}")
             self.fail(f"optimize_model_config test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_validation_error_handling(self, mock_print):
         """Test validation with invalid configuration files."""
         logger.info("[TEST] Testing validation error handling")
-        
+
         try:
             from optimizers.model_validator import validate_all_configurations
-            
+
             # Test with non-existent file
             results = validate_all_configurations("non_existent_file.json")
             self.assertEqual(results, {})
-            
+
             # Test with invalid JSON
             invalid_config_path = Path(self.test_dir) / "invalid.json"
             with open(invalid_config_path, "w") as f:
                 f.write("invalid json content")
-            
+
             results = validate_all_configurations(str(invalid_config_path))
             self.assertEqual(results, {})
-            
+
             # Test with empty configuration
             empty_config_path = Path(self.test_dir) / "empty.json"
             with open(empty_config_path, "w") as f:
                 json.dump({}, f)
-            
+
             results = validate_all_configurations(str(empty_config_path))
             self.assertEqual(results, {})
-            
+
             logger.info("[PASS] Validation error handling tested")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] Validation error handling test failed: {e}")
             self.fail(f"Validation error handling test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_validation_summary_functionality(self, mock_print):
         """Test validation summary reporting functionality."""
         logger.info("[TEST] Testing validation summary functionality")
-        
+
         try:
             from optimizers.model_validator import validate_all_configurations
-            
+
             # Run validation to trigger summary functionality
-            validation_results = validate_all_configurations(str(self.config_path))
-            
+            validate_all_configurations(str(self.config_path))
+
             # Verify print was called with summary information
             # The _print_validation_summary function should have been called
             print_calls = [str(call) for call in mock_print.call_args_list]
-            summary_found = any("VALIDATION SUMMARY" in call for call in print_calls)
-            self.assertTrue(summary_found, "Validation summary should be printed")
-            
+            summary_found = any(
+                "VALIDATION SUMMARY" in call for call in print_calls
+            )
+            self.assertTrue(
+                summary_found, "Validation summary should be printed"
+            )
+
             logger.info("[PASS] Validation summary functionality tested")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] Validation summary test failed: {e}")
             self.fail(f"Validation summary test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_invalid_model_parameters(self, mock_print):
         """Test validation with invalid model parameters."""
         logger.info("[TEST] Testing validation with invalid model parameters")
-        
+
         try:
             # Create configuration with invalid parameters
             invalid_config = {
@@ -651,40 +658,44 @@ class TestModelValidatorIntegration(unittest.TestCase):
                         "parameters": {
                             "generator": {
                                 "input_channels": -1,  # Invalid
-                                "output_channels": 0,   # Invalid
-                                "ngf": "invalid"        # Invalid type
+                                "output_channels": 0,  # Invalid
+                                "ngf": "invalid",  # Invalid type
                             },
                             "discriminator": {
                                 "input_channels": "invalid",  # Invalid type
-                                "ndf": -64                    # Invalid value
-                            }
-                        }
+                                "ndf": -64,  # Invalid value
+                            },
+                        },
                     }
                 }
             }
-            
+
             invalid_config_path = Path(self.test_dir) / "invalid_params.json"
             with open(invalid_config_path, "w") as f:
                 json.dump(invalid_config, f, indent=2)
-            
+
             from optimizers.model_validator import validate_all_configurations
-            
+
             # Should handle invalid parameters gracefully
             results = validate_all_configurations(str(invalid_config_path))
-            
+
             # Should return results even with invalid parameters
             self.assertIsInstance(results, dict)
-            
+
             if "invalid-model" in results:
                 # Model creation should have failed
-                self.assertFalse(results["invalid-model"].get("generator_created", True))
-                self.assertFalse(results["invalid-model"].get("discriminator_created", True))
-                self.assertGreater(len(results["invalid-model"].get("errors", [])), 0)
-            
+                self.assertFalse(
+                    results["invalid-model"].get("generator_created", True)
+                )
+                self.assertFalse(
+                    results["invalid-model"].get("discriminator_created", True)
+                )
+                self.assertGreater(
+                    len(results["invalid-model"].get("errors", [])), 0
+                )
+
             logger.info("[PASS] Invalid model parameters handled gracefully")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] Invalid parameters test failed: {e}")
             self.fail(f"Invalid parameters test failed: {e}")
-
-

@@ -235,6 +235,3 @@ class TestLearningRateFinderBasic(unittest.TestCase):
         except Exception as e:
             logger.error(f"[FAIL] _analyze_results fallback failed: {e}")
             self.fail(f"_analyze_results fallback failed: {e}")
-
-
-

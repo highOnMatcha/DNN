@@ -305,7 +305,8 @@ def optimize_batch_sizes(
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
                     print(
-                        f"GPU memory limit reached for {model_name}, using conservative values"
+                        f"GPU memory limit reached for {model_name}, using "
+                        f"conservative values"
                     )
                     batch_recommendations[model_name] = {
                         "recommended": 4,
@@ -329,6 +330,7 @@ def optimize_batch_sizes(
             }
 
     print(
-        f"\nBatch optimization completed for {len(batch_recommendations)} models"
+        f"\nBatch optimization completed for "
+        f"{len(batch_recommendations)} models"
     )
     return batch_recommendations

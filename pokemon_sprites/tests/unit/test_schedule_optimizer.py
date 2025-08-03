@@ -4,7 +4,6 @@ Test suite for TrainingScheduleOptimizer component.
 
 import json
 import math
-import shutil
 import sys
 import tempfile
 import unittest
@@ -20,9 +19,11 @@ from optimizers.schedule_optimizer import TrainingScheduleOptimizer
 
 try:
     from core.logging_config import get_logger
+
     logger = get_logger(__name__)
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 
@@ -525,7 +526,7 @@ class TestScheduleOptimizerAdvancedFeatures(unittest.TestCase):
     def setUp(self):
         """Set up test environment with temporary configuration files."""
         self.test_dir = tempfile.mkdtemp()
-        
+
         # Create test configuration file
         self.test_config = {
             "pix2pix_models": {
@@ -534,20 +535,20 @@ class TestScheduleOptimizerAdvancedFeatures(unittest.TestCase):
                     "description": "Test lightweight model",
                     "parameters": {
                         "generator": {"ngf": 32},
-                        "discriminator": {"ndf": 32}
-                    }
+                        "discriminator": {"ndf": 32},
+                    },
                 },
                 "test-standard": {
-                    "name": "test-standard", 
+                    "name": "test-standard",
                     "description": "Test standard model",
                     "parameters": {
                         "generator": {"ngf": 64},
-                        "discriminator": {"ndf": 64}
-                    }
-                }
+                        "discriminator": {"ndf": 64},
+                    },
+                },
             }
         }
-        
+
         self.config_path = Path(self.test_dir) / "test_model_configs.json"
         with open(self.config_path, "w") as f:
             json.dump(self.test_config, f, indent=2)
@@ -555,103 +556,112 @@ class TestScheduleOptimizerAdvancedFeatures(unittest.TestCase):
     def tearDown(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.test_dir)
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_create_learning_rate_schedule_cosine(self, mock_print):
         """Test cosine annealing learning rate schedule creation."""
         logger.info("[TEST] Testing cosine annealing LR schedule")
-        
+
         try:
             from optimizers.schedule_optimizer import TrainingScheduleOptimizer
-            
+
             optimizer = TrainingScheduleOptimizer()
-            
+
             # Test cosine annealing schedule
             schedule = optimizer.create_learning_rate_schedule(
                 schedule_type="cosine_annealing",
                 total_epochs=20,
-                base_lr=0.001
+                base_lr=0.001,
             )
-            
+
             # Verify schedule properties
             self.assertEqual(len(schedule), 20)
             self.assertIsInstance(schedule, list)
-            
+
             # Verify all learning rates are positive
             for lr in schedule:
                 self.assertGreater(lr, 0)
                 self.assertLessEqual(lr, 0.001)  # Should not exceed base LR
-            
+
             # Verify warmup behavior (first few epochs should be lower)
             self.assertLess(schedule[0], schedule[5])
-            
+
             logger.info("[PASS] Cosine annealing LR schedule tested")
-            
+
         except Exception as e:
-            logger.error(f"[FAIL] Cosine annealing LR schedule test failed: {e}")
+            logger.error(
+                f"[FAIL] Cosine annealing LR schedule test failed: {e}"
+            )
             self.fail(f"Cosine annealing LR schedule test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_create_learning_rate_schedule_step_decay(self, mock_print):
         """Test step decay learning rate schedule creation."""
         logger.info("[TEST] Testing step decay LR schedule")
-        
+
         try:
             from optimizers.schedule_optimizer import TrainingScheduleOptimizer
-            
+
             optimizer = TrainingScheduleOptimizer()
-            
+
             # Test step decay schedule
             schedule = optimizer.create_learning_rate_schedule(
-                schedule_type="step_decay",
-                total_epochs=30,
-                base_lr=0.002
+                schedule_type="step_decay", total_epochs=30, base_lr=0.002
             )
-            
+
             # Verify schedule properties
             self.assertEqual(len(schedule), 30)
             self.assertIsInstance(schedule, list)
-            
+
             # Verify all learning rates are positive
             for lr in schedule:
                 self.assertGreater(lr, 0)
                 self.assertLessEqual(lr, 0.002)  # Should not exceed base LR
-            
+
             # Verify step decay behavior (should have distinct steps)
             unique_lrs = set(schedule)
-            self.assertGreaterEqual(len(unique_lrs), 2)  # At least 2 different learning rates
-            
+            self.assertGreaterEqual(
+                len(unique_lrs), 2
+            )  # At least 2 different learning rates
+
             logger.info("[PASS] Step decay LR schedule tested")
-            
+
         except Exception as e:
             logger.error(f"[FAIL] Step decay LR schedule test failed: {e}")
             self.fail(f"Step decay LR schedule test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_optimize_training_schedules_workflow(self, mock_print):
         """Test complete training schedule optimization workflow."""
         logger.info("[TEST] Testing training schedule optimization workflow")
-        
+
         try:
-            from optimizers.schedule_optimizer import create_optimal_training_plan
-            
+            from optimizers.schedule_optimizer import (
+                create_optimal_training_plan,
+            )
+
             # Test full optimization workflow
-            training_plans = create_optimal_training_plan(str(self.config_path))
-            
+            training_plans = create_optimal_training_plan(
+                str(self.config_path)
+            )
+
             # Verify training plans structure
             self.assertIsInstance(training_plans, dict)
             self.assertIn("test-lightweight", training_plans)
             self.assertIn("test-standard", training_plans)
-            
+
             # Verify each plan has required components
             for model_name, plan in training_plans.items():
                 self.assertIn("complexity", plan)  # Updated field name
                 self.assertIn("total_epochs", plan)
                 self.assertIn("curriculum_stages", plan)  # Updated field name
                 self.assertIsInstance(plan["curriculum_stages"], list)
-                self.assertEqual(len(plan["curriculum_stages"]), 3)  # Foundation, Refinement, Polish
-                
+                self.assertEqual(
+                    len(plan["curriculum_stages"]), 3
+                )  # Foundation, Refinement, Polish
+
                 # Verify stage structure
                 for stage in plan["curriculum_stages"]:
                     self.assertIn("name", stage)
@@ -660,107 +670,134 @@ class TestScheduleOptimizerAdvancedFeatures(unittest.TestCase):
                     self.assertIn("output_resolution", stage)
                     self.assertIn("batch_size", stage)
                     self.assertIn("learning_rate", stage)
-            
+
             # Verify configuration file was updated
             with open(self.config_path, "r") as f:
                 updated_config = json.load(f)
-            
+
             self.assertIn("optimized_training_schedules", updated_config)
-            self.assertIn("test-lightweight", updated_config["optimized_training_schedules"])
-            self.assertIn("test-standard", updated_config["optimized_training_schedules"])
-            
-            logger.info("[PASS] Training schedule optimization workflow tested")
-            
+            self.assertIn(
+                "test-lightweight",
+                updated_config["optimized_training_schedules"],
+            )
+            self.assertIn(
+                "test-standard", updated_config["optimized_training_schedules"]
+            )
+
+            logger.info(
+                "[PASS] Training schedule optimization workflow tested"
+            )
+
         except Exception as e:
-            logger.error(f"[FAIL] Training schedule optimization test failed: {e}")
+            logger.error(
+                f"[FAIL] Training schedule optimization test failed: {e}"
+            )
             self.fail(f"Training schedule optimization test failed: {e}")
 
     def test_schedule_configuration_file_handling(self):
         """Test configuration file error handling in schedule optimization."""
         logger.info("[TEST] Testing schedule configuration file handling")
-        
+
         try:
-            from optimizers.schedule_optimizer import create_optimal_training_plan
-            
+            from optimizers.schedule_optimizer import (
+                create_optimal_training_plan,
+            )
+
             # Test with non-existent file - should raise an exception
             with self.assertRaises(FileNotFoundError):
                 create_optimal_training_plan("non_existent_file.json")
-            
+
             # Test with invalid JSON - should raise an exception
             invalid_config_path = Path(self.test_dir) / "invalid.json"
             with open(invalid_config_path, "w") as f:
                 f.write("invalid json content")
-            
+
             with self.assertRaises(json.JSONDecodeError):
                 create_optimal_training_plan(str(invalid_config_path))
-            
+
             # Test with empty configuration - should return empty dict or handle gracefully
             empty_config = {"pix2pix_models": {}}
             empty_config_path = Path(self.test_dir) / "empty.json"
             with open(empty_config_path, "w") as f:
                 json.dump(empty_config, f)
-            
-            training_plans = create_optimal_training_plan(str(empty_config_path))
+
+            training_plans = create_optimal_training_plan(
+                str(empty_config_path)
+            )
             # Should handle empty config gracefully
             self.assertIsInstance(training_plans, dict)
-            
+
             logger.info("[PASS] Schedule configuration file handling tested")
-            
+
             logger.info("[PASS] Schedule configuration file handling tested")
-            
+
         except Exception as e:
-            logger.error(f"[FAIL] Schedule configuration handling test failed: {e}")
+            logger.error(
+                f"[FAIL] Schedule configuration handling test failed: {e}"
+            )
             self.fail(f"Schedule configuration handling test failed: {e}")
 
-    @patch('builtins.print')
+    @patch("builtins.print")
     def test_schedule_complexity_mapping(self, mock_print):
         """Test model complexity detection and mapping."""
         logger.info("[TEST] Testing schedule complexity mapping")
-        
+
         try:
-            from optimizers.schedule_optimizer import create_optimal_training_plan
-            
+            from optimizers.schedule_optimizer import (
+                create_optimal_training_plan,
+            )
+
             # Test with different model configurations
             complex_config = {
                 "pix2pix_models": {
                     "lightweight-model": {
                         "name": "lightweight-model",
                         "parameters": {
-                            "generator": {"ngf": 32},  # Small NGF = lightweight
-                            "discriminator": {"ndf": 32}
-                        }
+                            "generator": {
+                                "ngf": 32
+                            },  # Small NGF = lightweight
+                            "discriminator": {"ndf": 32},
+                        },
                     },
                     "heavy-model": {
-                        "name": "heavy-model", 
+                        "name": "heavy-model",
                         "parameters": {
                             "generator": {"ngf": 128},  # Large NGF = heavy
-                            "discriminator": {"ndf": 128}
-                        }
-                    }
+                            "discriminator": {"ndf": 128},
+                        },
+                    },
                 }
             }
-            
+
             complex_config_path = Path(self.test_dir) / "complex.json"
             with open(complex_config_path, "w") as f:
                 json.dump(complex_config, f, indent=2)
-            
-            training_plans = create_optimal_training_plan(str(complex_config_path))
-            
+
+            training_plans = create_optimal_training_plan(
+                str(complex_config_path)
+            )
+
             # Verify complexity assignments
             self.assertIn("lightweight-model", training_plans)
             self.assertIn("heavy-model", training_plans)
-            
-            lightweight_complexity = training_plans["lightweight-model"]["complexity"]  # Updated field name
-            heavy_complexity = training_plans["heavy-model"]["complexity"]  # Updated field name
-            
+
+            lightweight_complexity = training_plans["lightweight-model"][
+                "complexity"
+            ]  # Updated field name
+            heavy_complexity = training_plans["heavy-model"][
+                "complexity"
+            ]  # Updated field name
+
             # Should assign different complexities based on ngf
             self.assertIn(lightweight_complexity, ["lightweight", "medium"])
             self.assertIn(heavy_complexity, ["medium", "heavy"])
-            
-            logger.info(f"[PASS] Complexity mapping: {lightweight_complexity} vs {heavy_complexity}")
-            
+
+            logger.info(
+                f"[PASS] Complexity mapping: {lightweight_complexity} vs {heavy_complexity}"
+            )
+
         except Exception as e:
-            logger.error(f"[FAIL] Schedule complexity mapping test failed: {e}")
+            logger.error(
+                f"[FAIL] Schedule complexity mapping test failed: {e}"
+            )
             self.fail(f"Schedule complexity mapping test failed: {e}")
-
-

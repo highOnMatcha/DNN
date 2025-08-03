@@ -96,7 +96,8 @@ def _create_generator(gen_params, device, results):
         )  # Create directly on device
         output = generator(test_input)
         print(
-            f"    Forward pass successful: {test_input.shape} -> {output.shape}"
+            f"    Forward pass successful: "
+            f"{test_input.shape} -> {output.shape}"
         )
 
         results["generator_created"] = True
@@ -132,13 +133,15 @@ def _create_discriminator(disc_params, device, results):
         )
         print(f"    Discriminator parameters: {disc_params_count:,}")
 
-        # Test forward pass with dummy input+target pair - create tensors directly on device
+        # Test forward pass with dummy input+target pair - create tensors
+        # directly on device
         test_input = torch.randn(2, 4, 256, 256, device=device)  # ARGB input
         test_target = torch.randn(2, 4, 256, 256, device=device)  # ARGB target
 
         output = discriminator(test_input, test_target)
         print(
-            f"    Forward pass successful: {test_input.shape} + {test_target.shape} -> {output.shape}"
+            f"    Forward pass successful: {test_input.shape} + "
+            f"{test_target.shape} -> {output.shape}"
         )
 
         results["discriminator_created"] = True

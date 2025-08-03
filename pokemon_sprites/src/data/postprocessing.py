@@ -263,7 +263,8 @@ class ARGBToPaletteConverter:
 
     def p_to_rgba_for_display(self, p_image: Image.Image) -> Image.Image:
         """
-        Convert P format image back to RGBA for proper display with transparency.
+        Convert P format image back to RGBA for proper display with
+        transparency.
 
         Args:
             p_image: P format image with transparency info
