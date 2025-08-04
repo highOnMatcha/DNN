@@ -10,7 +10,7 @@ models.
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from PIL import Image
@@ -25,6 +25,7 @@ from core.logging_config import (  # noqa: E402
     get_logger,
     initialize_project_logging,
 )
+from data.postprocessing import SpritePostProcessor  # noqa: E402
 from models import create_model  # noqa: E402
 
 logger = get_logger(__name__)
@@ -33,16 +34,23 @@ logger = get_logger(__name__)
 class PokemonSpriteGenerator:
     """Generator for creating Pokemon sprites from artwork."""
 
-    def __init__(self, model_path: str, device: str = "auto"):
+    def __init__(
+        self,
+        model_path: str,
+        device: str = "auto",
+        enable_postprocessing: bool = True,
+    ):
         """
-        Initialize the generator with a trained model.
+        Initialize the generator with a trained model and post-processing support.
 
         Args:
             model_path: Path to the trained model checkpoint.
             device: Device to use ("auto", "cpu", "cuda").
+            enable_postprocessing: Whether to enable ARGB to P format post-processing.
         """
         self.model_path = Path(model_path)
         self.device = self._setup_device(device)
+        self.enable_postprocessing = enable_postprocessing
 
         # Load checkpoint
         self.checkpoint = torch.load(self.model_path, map_location=self.device)
@@ -52,29 +60,61 @@ class PokemonSpriteGenerator:
         self.model = self._load_model()
         self.model.eval()
 
-        # Setup transforms
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize(
-                    (
-                        self.model_config.parameters.get("image_size", 64),
-                        self.model_config.parameters.get("image_size", 64),
-                    )
-                ),
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-            ]
-        )
+        # Setup post-processing if enabled
+        if self.enable_postprocessing:
+            self.postprocessor = SpritePostProcessor()
+            logger.info(
+                "Post-processing enabled for ARGB to P format conversion"
+            )
+        else:
+            self.postprocessor = None
 
-        self.inverse_transform = transforms.Compose(
-            [
-                transforms.Normalize([-1, -1, -1], [2, 2, 2]),
-                transforms.ToPILImage(),
-            ]  # Denormalize from [-1,1] to [0,1]
+        # Determine input channels and setup transforms accordingly
+        input_channels = self.model_config.parameters.get("generator", {}).get(
+            "input_channels", 4
         )
+        self.use_rgba = input_channels == 4
+
+        # Setup transforms for ARGB support
+        image_size = self.model_config.parameters.get("image_size", 128)
+
+        if self.use_rgba:
+            # RGBA transforms - no normalization for alpha channel
+            self.transform = transforms.Compose(
+                [
+                    transforms.Resize((image_size, image_size)),
+                    transforms.ToTensor(),
+                ]
+            )
+
+            self.inverse_transform = transforms.Compose(
+                [
+                    transforms.ToPILImage(),
+                ]
+            )
+        else:
+            # RGB transforms with normalization
+            self.transform = transforms.Compose(
+                [
+                    transforms.Resize((image_size, image_size)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+                ]
+            )
+
+            self.inverse_transform = transforms.Compose(
+                [
+                    transforms.Normalize([-1, -1, -1], [2, 2, 2]),
+                    transforms.ToPILImage(),
+                ]
+            )
 
         logger.info(f"Generator initialized with {self.model_config.name}")
         logger.info(f"Architecture: {self.model_config.architecture}")
+        logger.info(
+            f"Input channels: {input_channels} ({'RGBA' if self.use_rgba else 'RGB'})"
+        )
+        logger.info(f"Image size: {image_size}x{image_size}")
         logger.info(f"Device: {self.device}")
 
     def _setup_device(self, device: str) -> torch.device:
@@ -117,44 +157,102 @@ class PokemonSpriteGenerator:
 
         return model
 
-    def generate_sprite(self, artwork_path: Union[str, Path]) -> Image.Image:
+    def generate_sprite(
+        self, artwork_path: Union[str, Path], return_formats: list = ["rgba"]
+    ) -> Dict[str, Any]:
         """
-        Generate a sprite from artwork.
+        Generate a sprite from artwork with ARGB support and post-processing.
 
         Args:
             artwork_path: Path to the input artwork image.
+            return_formats: List of formats to return ("rgba", "p")
 
         Returns:
-            Generated sprite as PIL Image.
+            Dictionary containing generated sprites in requested formats and analysis.
         """
         artwork_path = Path(artwork_path)
 
         if not artwork_path.exists():
             raise FileNotFoundError(f"Artwork file not found: {artwork_path}")
 
-        # Load and preprocess image
-        artwork = Image.open(artwork_path).convert("RGB")
-        input_tensor = self.transform(artwork).unsqueeze(0).to(self.device)
+        # Load and preprocess image with ARGB support
+        if self.use_rgba:
+            artwork = Image.open(artwork_path).convert("RGBA")
+        else:
+            artwork = Image.open(artwork_path).convert("RGB")
+
+        # Apply transforms and ensure tensor output
+        if hasattr(self.transform, "__call__"):
+            transformed = self.transform(artwork)
+            if isinstance(transformed, Image.Image):
+                # If transform returns PIL Image, convert to tensor manually
+                import torchvision.transforms.functional as TF
+
+                tensor = TF.to_tensor(transformed)
+                # Normalize to [-1, 1]
+                tensor = (tensor - 0.5) / 0.5
+                input_tensor = tensor.unsqueeze(0).to(self.device)
+            else:
+                # Transform already returns tensor
+                input_tensor = transformed.unsqueeze(0).to(self.device)
+        else:
+            # Fallback to basic tensor conversion
+            import torchvision.transforms.functional as TF
+
+            tensor = TF.to_tensor(artwork)
+            # Normalize to [-1, 1]
+            tensor = (tensor - 0.5) / 0.5
+            input_tensor = tensor.unsqueeze(0).to(self.device)
 
         # Generate sprite
         with torch.no_grad():
             generated_tensor = self.model(input_tensor)
-            generated_tensor = torch.clamp(generated_tensor, -1, 1)
+
+            if not self.use_rgba:
+                generated_tensor = torch.clamp(generated_tensor, -1, 1)
 
         # Convert back to PIL Image
         generated_sprite = self.inverse_transform(
             generated_tensor.squeeze(0).cpu()
         )
 
-        return generated_sprite
+        # Ensure RGBA format for post-processing compatibility
+        if not isinstance(generated_sprite, Image.Image):
+            # Convert tensor to PIL Image if needed
+            if isinstance(generated_sprite, torch.Tensor):
+                generated_sprite = transforms.ToPILImage()(generated_sprite)
 
-    def generate_batch(self, artwork_paths: list, output_dir: str) -> list:
+        if generated_sprite.mode != "RGBA":
+            generated_sprite = generated_sprite.convert("RGBA")
+
+        result: Dict[str, Any] = {"artwork_path": str(artwork_path)}
+
+        # Apply post-processing if enabled
+        if self.enable_postprocessing and self.postprocessor:
+            processed_results = self.postprocessor.process_single_sprite(
+                generated_sprite, return_formats=return_formats
+            )
+            result.update(processed_results)
+        else:
+            # Return RGBA sprite without post-processing
+            if "rgba" in return_formats:
+                result["rgba"] = generated_sprite
+
+        return result
+
+    def generate_batch(
+        self,
+        artwork_paths: list,
+        output_dir: Union[str, Path],
+        return_formats: list = ["rgba", "p"],
+    ) -> list:
         """
-        Generate sprites for multiple artworks.
+        Generate sprites for multiple artworks with post-processing support.
 
         Args:
             artwork_paths: List of paths to artwork images.
             output_dir: Directory to save generated sprites.
+            return_formats: List of formats to return ("rgba", "p")
 
         Returns:
             List of output paths for generated sprites.
@@ -167,18 +265,30 @@ class PokemonSpriteGenerator:
         for i, artwork_path in enumerate(artwork_paths):
             try:
                 artwork_path = Path(artwork_path)
-                sprite = self.generate_sprite(artwork_path)
-
-                # Save generated sprite
-                output_path = (
-                    output_dir / f"{artwork_path.stem}_generated_sprite.png"
+                sprite_results = self.generate_sprite(
+                    artwork_path, return_formats
                 )
-                sprite.save(output_path)
-                output_paths.append(output_path)
+
+                # Save RGBA sprite
+                if "rgba" in sprite_results:
+                    rgba_output_path = (
+                        output_dir
+                        / f"{artwork_path.stem}_generated_sprite.png"
+                    )
+                    sprite_results["rgba"].save(rgba_output_path)
+                    output_paths.append(rgba_output_path)
+
+                # Save P format sprite if available
+                if "p" in sprite_results:
+                    p_output_path = (
+                        output_dir
+                        / f"{artwork_path.stem}_generated_sprite_p.png"
+                    )
+                    sprite_results["p"].save(p_output_path)
 
                 logger.info(
                     f"Generated sprite {i+1}/{len(artwork_paths)}: "
-                    f"{output_path}"
+                    f"Formats: {list(sprite_results.keys())}"
                 )
 
             except Exception as e:
@@ -210,7 +320,13 @@ class PokemonSpriteGenerator:
         artwork = Image.open(artwork_path).convert("RGB")
 
         # Generate sprite
-        sprite = self.generate_sprite(artwork_path)
+        sprite_result = self.generate_sprite(artwork_path)
+
+        # Extract PIL Image from result (use final processed image if available, otherwise base)
+        if self.enable_postprocessing and "processed" in sprite_result:
+            sprite = sprite_result["processed"]
+        else:
+            sprite = sprite_result["base"]
 
         # Resize images to same height for comparison
         target_height = 256
@@ -313,10 +429,27 @@ def main():
                 )
                 generator.create_comparison(input_path, comparison_path)
             else:
-                sprite = generator.generate_sprite(input_path)
+                sprite_result = generator.generate_sprite(input_path)
                 sprite_path = output_path / f"{input_path.stem}_sprite.png"
-                sprite.save(sprite_path)
-                logger.info(f"Generated sprite: {sprite_path}")
+
+                # Save the appropriate image based on post-processing setting
+                if (
+                    generator.enable_postprocessing
+                    and "processed" in sprite_result
+                ):
+                    sprite_result["processed"].save(sprite_path)
+                    logger.info(f"Generated processed sprite: {sprite_path}")
+                else:
+                    sprite_result["base"].save(sprite_path)
+                    logger.info(f"Generated base sprite: {sprite_path}")
+
+                # Also save other formats if available
+                if "palette" in sprite_result:
+                    palette_path = (
+                        output_path / f"{input_path.stem}_palette.png"
+                    )
+                    sprite_result["palette"].save(palette_path)
+                    logger.info(f"Generated palette sprite: {palette_path}")
 
         elif input_path.is_dir():
             # Multiple images

@@ -128,8 +128,8 @@ class TestDataLoaderModelIntegration(unittest.TestCase):
 
         # Step 4: Test model with loaded data
         model = Pix2PixGenerator(
-            input_channels=3, output_channels=3, ngf=32
-        )  # Smaller for testing
+            input_channels=4, output_channels=4, ngf=32
+        )  # Updated for ARGB support
         model.eval()
 
         # Load and process a test image
@@ -299,10 +299,10 @@ class TestDataLoaderModelIntegration(unittest.TestCase):
 
         # Test models with batch
         generator = Pix2PixGenerator(
-            input_channels=3, output_channels=3, ngf=32
+            input_channels=4, output_channels=4, ngf=32
         )
         discriminator = Pix2PixDiscriminator(
-            input_channels=6, ndf=32, n_layers=2
+            input_channels=8, ndf=32, n_layers=2  # 4 input + 4 target channels
         )
 
         with torch.no_grad():

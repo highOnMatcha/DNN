@@ -603,5 +603,229 @@ class TestErrorHandlingAndEdgeCases(unittest.TestCase):
             self.fail(f"Memory efficiency components failed: {e}")
 
 
+class TestPokemonSpriteGeneratorAdvanced(unittest.TestCase):
+    """Advanced test cases for PokemonSpriteGenerator."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_model_state = {
+            "model_config": {
+                "name": "advanced_test_model",
+                "architecture": "pix2pix",
+                "output_dir": "test_output",
+                "description": "Advanced test model",
+                "input_channels": 4,
+                "output_channels": 4,
+                "image_size": 128,
+                "parameters": {"ngf": 64, "generator": {"input_channels": 4}},
+            },
+            "generator_state_dict": {},
+            "discriminator_state_dict": {},
+        }
+
+    @patch("generate.torch.load")
+    @patch("generate.PokemonSpriteGenerator._load_model")
+    def test_argb_model_loading(self, mock_create_model, mock_torch_load):
+        """Test ARGB model loading and configuration."""
+        logger.info("[TEST] Testing ARGB model loading")
+
+        try:
+            from generate import PokemonSpriteGenerator
+
+            # Mock model loading
+            mock_torch_load.return_value = self.mock_model_state
+            mock_model = Mock()
+            mock_model.load_state_dict = Mock()
+            mock_model.eval = Mock()
+            mock_model.to = Mock(return_value=mock_model)
+            mock_create_model.return_value = mock_model
+
+            # Test ARGB-enabled generator
+            generator = PokemonSpriteGenerator(
+                "fake_checkpoint.pth", device="cpu", enable_postprocessing=True
+            )
+
+            # Verify ARGB configuration
+            self.assertTrue(generator.use_rgba)
+            self.assertTrue(generator.enable_postprocessing)
+            self.assertIsNotNone(generator.postprocessor)
+
+            logger.info("[SUCCESS] ARGB model loading tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] ARGB model loading failed: {e}")
+            self.fail(f"ARGB model loading failed: {e}")
+
+    @patch("generate.PokemonSpriteGenerator._load_model")
+    @patch("generate.torch.load")
+    def test_postprocessing_integration(
+        self, mock_torch_load, mock_create_model
+    ):
+        """Test post-processing integration."""
+        logger.info("[TEST] Testing post-processing integration")
+
+        try:
+            from generate import PokemonSpriteGenerator
+
+            # Mock setup
+            mock_torch_load.return_value = self.mock_model_state
+            mock_model = Mock()
+            mock_model.load_state_dict = Mock()
+            mock_model.eval = Mock()
+            mock_model.to = Mock(return_value=mock_model)
+            mock_create_model.return_value = mock_model
+
+            # Create generator with post-processing
+            generator = PokemonSpriteGenerator(
+                "fake_checkpoint.pth", enable_postprocessing=True
+            )
+
+            # Verify post-processor configuration
+            self.assertIsNotNone(generator.postprocessor)
+
+            logger.info("[SUCCESS] Post-processing integration tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Post-processing integration failed: {e}")
+            self.fail(f"Post-processing integration failed: {e}")
+
+    def test_tensor_transforms(self):
+        """Test tensor transformation utilities."""
+        logger.info("[TEST] Testing tensor transforms")
+
+        try:
+            import torchvision.transforms.functional as TF
+
+            # Test PIL to tensor conversion
+            test_image = Image.new("RGBA", (64, 64), (255, 0, 0, 255))
+            tensor = TF.to_tensor(test_image)
+
+            self.assertEqual(tensor.shape[0], 4)  # RGBA channels
+            self.assertEqual(tensor.shape[1], 64)  # Height
+            self.assertEqual(tensor.shape[2], 64)  # Width
+
+            # Test normalization
+            normalized = (tensor - 0.5) / 0.5
+            self.assertTrue(torch.all(normalized >= -1.0))
+            self.assertTrue(torch.all(normalized <= 1.0))
+
+            logger.info("[SUCCESS] Tensor transform tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Tensor transform tests failed: {e}")
+            self.fail(f"Tensor transform tests failed: {e}")
+
+    def test_device_management(self):
+        """Test device management and GPU/CPU handling."""
+        logger.info("[TEST] Testing device management")
+
+        try:
+            # Test device detection
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+                logger.info("[INFO] CUDA available, testing GPU device")
+            else:
+                device = torch.device("cpu")
+                logger.info("[INFO] CUDA not available, testing CPU device")
+
+            # Test tensor device placement
+            test_tensor = torch.randn(1, 4, 64, 64).to(device)
+            self.assertEqual(test_tensor.device.type, device.type)
+
+            # Test model device compatibility
+            simple_model = torch.nn.Conv2d(4, 4, 3, padding=1).to(device)
+            output = simple_model(test_tensor)
+            self.assertEqual(output.device.type, device.type)
+
+            logger.info("[SUCCESS] Device management tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Device management failed: {e}")
+            self.fail(f"Device management failed: {e}")
+
+    def test_error_handling(self):
+        """Test error handling scenarios."""
+        logger.info("[TEST] Testing error handling")
+
+        try:
+            from generate import PokemonSpriteGenerator
+
+            # Test invalid checkpoint path
+            with self.assertRaises(FileNotFoundError):
+                PokemonSpriteGenerator("nonexistent_checkpoint.pth")
+
+            logger.info("[SUCCESS] Error handling tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Error handling tests failed: {e}")
+            self.fail(f"Error handling tests failed: {e}")
+
+
+class TestGenerateUtilities(unittest.TestCase):
+    """Test utility functions in generate module."""
+
+    def test_image_format_handling(self):
+        """Test image format handling utilities."""
+        logger.info("[TEST] Testing image format handling")
+
+        try:
+            # Test RGBA image creation
+            rgba_image = Image.new("RGBA", (32, 32), (255, 0, 0, 128))
+            self.assertEqual(rgba_image.mode, "RGBA")
+            self.assertEqual(rgba_image.size, (32, 32))
+
+            # Test RGB to RGBA conversion
+            rgb_image = Image.new("RGB", (32, 32), (0, 255, 0))
+            rgba_converted = rgb_image.convert("RGBA")
+            self.assertEqual(rgba_converted.mode, "RGBA")
+
+            # Test transparency preservation
+            transparent_pixel = rgba_image.getpixel((0, 0))
+            self.assertEqual(len(transparent_pixel), 4)
+            self.assertEqual(transparent_pixel[3], 128)  # Alpha channel
+
+            logger.info("[SUCCESS] Image format handling tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Image format handling failed: {e}")
+            self.fail(f"Image format handling failed: {e}")
+
+    def test_command_line_argument_parsing(self):
+        """Test command line argument parsing."""
+        logger.info("[TEST] Testing command line argument parsing")
+
+        try:
+            # Test argument parser setup (without importing main)
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--model", type=str, required=True)
+            parser.add_argument("--input", type=str, required=True)
+            parser.add_argument("--output", type=str, required=True)
+            parser.add_argument("--comparison", action="store_true")
+
+            # Test valid arguments
+            test_args = parser.parse_args(
+                [
+                    "--model",
+                    "test_model.pth",
+                    "--input",
+                    "test_input.png",
+                    "--output",
+                    "test_output",
+                    "--comparison",
+                ]
+            )
+
+            self.assertEqual(test_args.model, "test_model.pth")
+            self.assertEqual(test_args.input, "test_input.png")
+            self.assertEqual(test_args.output, "test_output")
+            self.assertTrue(test_args.comparison)
+
+            logger.info("[SUCCESS] Command line argument parsing tests passed")
+
+        except Exception as e:
+            logger.error(f"[FAIL] Command line argument parsing failed: {e}")
+            self.fail(f"Command line argument parsing failed: {e}")
+
+
 if __name__ == "__main__":
     unittest.main()

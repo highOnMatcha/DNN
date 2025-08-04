@@ -34,16 +34,16 @@ class PokemonDataset(Dataset):
         self,
         data_dir: str,
         split: str = "train",
-        image_size: int = 256,
+        image_size: int = 128,
         augmentation_level: str = "conservative",
     ):
         """
-        Initialize Pokemon dataset.
+        Initialize Pokemon dataset with ARGB support.
 
         Args:
             data_dir: Path to training data directory
             split: Data split ("train" or "val")
-            image_size: Target image size
+            image_size: Target image size (reduced to 128 for better sprite handling)
             augmentation_level: Augmentation level
         """
         self.data_dir = Path(data_dir)
@@ -163,25 +163,38 @@ def create_data_loaders(
         Tuple of (train_loader, val_loader)
     """
     try:
-        # Get data directory
+        # Get data directory - prefer 128 for better sprite handling
         data_root = Path(get_data_root_dir())
-        data_dir = data_root / "pokemon_complete" / "processed" / "input_256"
+        target_size = getattr(training_config, "image_size", 128)
+        data_dir = (
+            data_root
+            / "pokemon_complete"
+            / "processed"
+            / f"input_{target_size}"
+        )
+
+        # Fallback to 256 if preferred size doesn't exist
+        if not data_dir.exists():
+            data_dir = (
+                data_root / "pokemon_complete" / "processed" / "input_256"
+            )
+            target_size = 256
 
         if not data_dir.exists():
             raise ValueError(f"Training data directory not found: {data_dir}")
 
-        # Create datasets
+        # Create datasets with ARGB support
         train_dataset = PokemonDataset(
             data_dir=str(data_dir),
             split="train",
-            image_size=getattr(training_config, "image_size", 256),
+            image_size=target_size,
             augmentation_level=augmentation_level,
         )
 
         val_dataset = PokemonDataset(
             data_dir=str(data_dir),
             split="val",
-            image_size=getattr(training_config, "image_size", 256),
+            image_size=target_size,
             augmentation_level="none",  # No augmentation for validation
         )
 
@@ -268,4 +281,5 @@ def get_dataset_statistics(data_dir: Path) -> dict:
 
     except Exception as e:
         logger.error(f"Failed to get dataset statistics: {e}")
+        return {"train_samples": 0, "val_samples": 0, "total_samples": 0}
         return {"train_samples": 0, "val_samples": 0, "total_samples": 0}

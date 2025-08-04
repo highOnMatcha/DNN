@@ -3,6 +3,9 @@ Post-processing utilities for Pokemon sprite generation.
 
 This module contains classes and functions for converting ARGB model outputs
 to optimized P format sprites suitable for game deployment.
+
+Note: PIL 'mode' parameter deprecation warnings are expected and will be
+resolved when Pillow 13 is released (2026). These do not affect functionality.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -82,13 +85,19 @@ class ARGBToPaletteConverter:
         if len(pixels) == 0:
             return np.array([]).reshape(0, 4)
 
-        if len(pixels) <= n_colors:
-            return np.unique(pixels, axis=0)
+        # Check unique colors first to avoid KMeans warnings
+        unique_pixels = np.unique(pixels, axis=0)
+        if len(unique_pixels) <= n_colors:
+            return unique_pixels
 
         # Use only RGB for clustering (alpha handled separately)
         rgb_pixels = pixels[:, :3] if pixels.shape[1] == 4 else pixels
+        unique_rgb = np.unique(rgb_pixels, axis=0)
 
-        kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
+        # Adjust n_colors if we have fewer unique RGB colors
+        actual_n_colors = min(n_colors, len(unique_rgb))
+
+        kmeans = KMeans(n_clusters=actual_n_colors, random_state=42, n_init=10)
         kmeans.fit(rgb_pixels)
 
         # Get cluster centers and add alpha channel
@@ -97,7 +106,7 @@ class ARGBToPaletteConverter:
             # Add most common alpha value for each cluster
             labels = kmeans.labels_
             alpha_values = []
-            for i in range(n_colors):
+            for i in range(actual_n_colors):
                 cluster_pixels = pixels[labels == i]
                 if len(cluster_pixels) > 0:
                     alpha_vals, counts = np.unique(
@@ -133,6 +142,79 @@ class ARGBToPaletteConverter:
 
         return indices.astype(np.uint8)
 
+    def _convert_with_custom_palette(
+        self, rgba_image: Image.Image, custom_palette: np.ndarray
+    ) -> Tuple[Image.Image, np.ndarray]:
+        """Convert image using a custom palette (fallback to manual method)."""
+        # Extract colors
+        img_array = np.array(rgba_image)
+        h, w, c = img_array.shape
+        pixels = img_array.reshape(-1, c)
+
+        # Assign pixels to palette
+        indices = self._assign_to_palette(pixels, custom_palette)
+
+        # Create P format image
+        indexed_array = indices.reshape(h, w)
+        p_image = Image.fromarray(indexed_array, "P")
+
+        # Set palette (PIL expects RGB format for palette)
+        palette_rgb = custom_palette[:, :3].flatten()
+        # Pad palette to 768 bytes (256 * 3) if needed
+        if len(palette_rgb) < 768:
+            palette_rgb = np.pad(
+                palette_rgb, (0, 768 - len(palette_rgb)), "constant"
+            )
+
+        # Use putpalette without deprecated mode parameter
+        p_image.putpalette(palette_rgb.tolist())
+
+        # Handle transparency - find transparent color index
+        if self.preserve_transparency and len(custom_palette) > 0:
+            transparent_indices = np.where(custom_palette[:, 3] == 0)[0]
+            if len(transparent_indices) > 0:
+                p_image.info["transparency"] = int(transparent_indices[0])
+
+        return p_image, custom_palette
+
+    def _extract_palette_from_p_image(
+        self, p_image: Image.Image, original_rgba: Image.Image
+    ) -> np.ndarray:
+        """Extract the actual palette used by PIL's quantization."""
+        if p_image.palette is None:
+            # Fallback: extract unique colors from original
+            img_array = np.array(original_rgba)
+            unique_colors = np.unique(img_array.reshape(-1, 4), axis=0)
+            return unique_colors[: self.max_colors]
+
+        # Get RGB palette data
+        try:
+            # Get raw palette data - it's a flat list of RGB values
+            palette_data = p_image.getpalette()
+            if palette_data is None:
+                raise ValueError("No palette data available")
+
+            # Convert to numpy array and reshape to (n_colors, 3)
+            palette_rgb = np.array(palette_data).reshape(-1, 3)
+        except (AttributeError, IndexError, ValueError):
+            # Fallback if palette data access fails
+            img_array = np.array(original_rgba)
+            unique_colors = np.unique(img_array.reshape(-1, 4), axis=0)
+            return unique_colors[: self.max_colors]
+
+        # Add alpha channel (assume opaque unless transparency is set)
+        alpha_values = np.full(len(palette_rgb), 255, dtype=np.uint8)
+
+        # Handle transparency
+        if "transparency" in p_image.info:
+            transparent_index = p_image.info["transparency"]
+            if transparent_index < len(alpha_values):
+                alpha_values[transparent_index] = 0
+
+        # Combine RGB and alpha
+        palette = np.column_stack([palette_rgb, alpha_values])
+        return palette.astype(np.uint8)
+
     def convert_single_image(
         self,
         rgba_image: Union[Image.Image, np.ndarray],
@@ -151,61 +233,57 @@ class ARGBToPaletteConverter:
         if not isinstance(rgba_image, Image.Image):
             rgba_image = Image.fromarray(rgba_image, "RGBA")
 
-        # Extract colors
-        opaque_pixels, transparent_pixels = self._extract_colors(rgba_image)
-
         if custom_palette is not None:
-            palette = custom_palette
-        else:
-            # Reserve space for transparency if needed
-            max_opaque_colors = self.max_colors - (
-                1
-                if self.preserve_transparency
-                and transparent_pixels is not None
-                else 0
+            # Use custom palette with manual assignment
+            return self._convert_with_custom_palette(
+                rgba_image, custom_palette
             )
 
-            # Optimize palette for opaque colors
-            if len(opaque_pixels) > 0 and self.optimize_palette:
-                palette = self._optimize_palette_kmeans(
-                    opaque_pixels, max_opaque_colors
+        # Use PIL's built-in quantization for optimal palette creation
+        if self.preserve_transparency:
+            # Handle transparency: quantize without alpha, then add transparency back
+            rgb_image = rgba_image.convert("RGB")
+
+            # Quantize the RGB image
+            if self.optimize_palette:
+                p_image = rgb_image.quantize(
+                    colors=self.max_colors,
+                    method=Image.Quantize.MEDIANCUT,
+                    dither=Image.Dither.NONE,
                 )
             else:
-                palette = np.unique(opaque_pixels, axis=0)[:max_opaque_colors]
+                p_image = rgb_image.quantize(colors=self.max_colors)
 
-            # Add transparency color if needed
-            if self.preserve_transparency and transparent_pixels is not None:
-                transparent_color = np.array([[0, 0, 0, 0]], dtype=np.uint8)
-                palette = np.vstack([transparent_color, palette])
+            # Add transparency support
+            rgba_array = np.array(rgba_image)
+            alpha_mask = rgba_array[:, :, 3] == 0
 
-        # Convert image
-        img_array = np.array(rgba_image)
-        h, w, c = img_array.shape
-        pixels = img_array.reshape(-1, c)
+            if np.any(alpha_mask):
+                # Directly modify the existing P image to set transparent pixels
+                p_array = np.array(p_image)
+                p_array[alpha_mask] = 0  # Set transparent pixels to index 0
 
-        # Assign pixels to palette
-        indices = self._assign_to_palette(pixels, palette)
+                # Update the image data in place
+                p_image.putdata(p_array.flatten().tolist())
+                p_image.info["transparency"] = 0
+        else:
+            # No transparency - direct quantization
+            if rgba_image.mode == "RGBA":
+                rgb_image = rgba_image.convert("RGB")
+            else:
+                rgb_image = rgba_image
 
-        # Create P format image
-        indexed_array = indices.reshape(h, w)
-        p_image = Image.fromarray(indexed_array, "P")
+            if self.optimize_palette:
+                p_image = rgb_image.quantize(
+                    colors=self.max_colors,
+                    method=Image.Quantize.MEDIANCUT,
+                    dither=Image.Dither.NONE,
+                )
+            else:
+                p_image = rgb_image.quantize(colors=self.max_colors)
 
-        # Set palette (PIL expects RGB format for palette)
-        palette_rgb = palette[:, :3].flatten()
-        # Pad palette to 768 bytes (256 * 3) if needed
-        if len(palette_rgb) < 768:
-            palette_rgb = np.pad(
-                palette_rgb, (0, 768 - len(palette_rgb)), "constant"
-            )
-
-        p_image.putpalette(palette_rgb.tolist())
-
-        # Handle transparency - find transparent color index
-        if self.preserve_transparency and len(palette) > 0:
-            # Find the index of transparent pixels (alpha == 0)
-            transparent_indices = np.where(palette[:, 3] == 0)[0]
-            if len(transparent_indices) > 0:
-                p_image.info["transparency"] = int(transparent_indices[0])
+        # Extract the actual palette used
+        palette = self._extract_palette_from_p_image(p_image, rgba_image)
 
         return p_image, palette
 

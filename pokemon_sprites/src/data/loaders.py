@@ -136,7 +136,7 @@ def find_valid_pairs(sprites_dir: Path, artwork_dir: Path) -> List[Dict]:
 
 
 def resize_with_padding(
-    img: Image.Image, target_size: Tuple[int, int]
+    img: Image.Image, target_size: Tuple[int, int], preserve_alpha: bool = True
 ) -> Image.Image:
     """
     Resize image to target size with padding to maintain aspect ratio.
@@ -144,34 +144,53 @@ def resize_with_padding(
     Args:
         img: PIL Image to resize
         target_size: Target (width, height)
+        preserve_alpha: Whether to preserve alpha channel for ARGB support
 
     Returns:
-        Resized PIL Image with padding
+        Resized PIL Image with padding, preserving ARGB format if applicable
     """
-    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+    # Determine output format based on input and preserve_alpha setting
+    if preserve_alpha and (img.mode == "RGBA" or img.mode == "LA"):
+        output_mode = "RGBA"
+        background_color = (0, 0, 0, 0)  # Transparent background
+    else:
+        output_mode = "RGB"
+        background_color = (255, 255, 255)  # White background
 
-    new_img = Image.new("RGB", target_size, (255, 255, 255))
+    # Resize image while maintaining aspect ratio
+    img_copy = img.copy()
+    img_copy.thumbnail(target_size, Image.Resampling.LANCZOS)
 
-    # Center the image
-    x = (target_size[0] - img.width) // 2
-    y = (target_size[1] - img.height) // 2
+    # Create new image with appropriate background
+    new_img = Image.new(output_mode, target_size, background_color)
 
-    new_img.paste(img, (x, y))
+    # Center the resized image
+    x = (target_size[0] - img_copy.width) // 2
+    y = (target_size[1] - img_copy.height) // 2
+
+    # Paste image, handling alpha channel properly
+    if preserve_alpha and img_copy.mode in ["RGBA", "LA"]:
+        new_img.paste(img_copy, (x, y), img_copy)
+    else:
+        new_img.paste(img_copy, (x, y))
+
     return new_img
 
 
 def process_image_pairs(
     pairs: List[Dict],
     output_dir: Path,
-    target_size: Tuple[int, int] = (256, 256),
+    target_size: Tuple[int, int] = (128, 128),
+    preserve_argb: bool = True,
 ) -> int:
     """
-    Process and save image pairs for training.
+    Process and save image pairs for training with ARGB support.
 
     Args:
         pairs: List of image pair dictionaries
         output_dir: Directory to save processed images
-        target_size: Target image size
+        target_size: Target image size (reduced from 256 to 128 for better sprite handling)
+        preserve_argb: Whether to preserve ARGB channels for transparency support
 
     Returns:
         Number of successfully processed pairs
@@ -189,12 +208,25 @@ def process_image_pairs(
         try:
             pokemon_id = pair["pokemon_id"]
 
-            # Load and process images
-            artwork_img = Image.open(pair["artwork_path"]).convert("RGB")
-            sprite_img = Image.open(pair["sprite_path"]).convert("RGB")
+            # Load and process images with ARGB support
+            artwork_img = Image.open(pair["artwork_path"])
+            sprite_img = Image.open(pair["sprite_path"])
 
-            artwork_processed = resize_with_padding(artwork_img, target_size)
-            sprite_processed = resize_with_padding(sprite_img, target_size)
+            # Convert to RGBA for consistent ARGB processing
+            if preserve_argb:
+                artwork_img = artwork_img.convert("RGBA")
+                sprite_img = sprite_img.convert("RGBA")
+            else:
+                artwork_img = artwork_img.convert("RGB")
+                sprite_img = sprite_img.convert("RGB")
+
+            # Resize with proper ARGB handling
+            artwork_processed = resize_with_padding(
+                artwork_img, target_size, preserve_argb
+            )
+            sprite_processed = resize_with_padding(
+                sprite_img, target_size, preserve_argb
+            )
 
             # Save processed images
             artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png")
@@ -296,18 +328,20 @@ def create_training_dataset(
     pairs: List[Dict],
     output_dir: Path,
     train_split: float = 0.8,
-    image_size: Tuple[int, int] = (64, 64),
+    image_size: Tuple[int, int] = (128, 128),
     augment_data: bool = True,
+    preserve_argb: bool = True,
 ) -> Dict:
     """
-    Create a training dataset from valid pairs of artwork and sprites.
+    Create a training dataset from valid pairs of artwork and sprites with ARGB support.
 
     Args:
         pairs: List of valid artwork-sprite pairs
         output_dir: Output directory for processed dataset
         train_split: Fraction of data to use for training
-        image_size: Target image size (width, height)
+        image_size: Target image size (reduced to 128x128 for better sprite handling)
         augment_data: Whether to apply data augmentation
+        preserve_argb: Whether to preserve ARGB channels for transparency support
 
     Returns:
         Dictionary containing dataset information
@@ -334,33 +368,53 @@ def create_training_dataset(
     train_pairs = pairs[:split_idx]
     val_pairs = pairs[split_idx:]
 
-    # Process training pairs
-    print(f"Processing {len(train_pairs)} training pairs...")
+    # Process training pairs with ARGB support
+    print(f"Processing {len(train_pairs)} training pairs with ARGB support...")
     for i, pair in enumerate(train_pairs):
         # Process artwork (input)
         artwork_img = Image.open(pair["artwork_path"])
-        artwork_img = resize_with_padding(artwork_img, image_size)
+        if preserve_argb:
+            artwork_img = artwork_img.convert("RGBA")
+        else:
+            artwork_img = artwork_img.convert("RGB")
+        artwork_img = resize_with_padding(
+            artwork_img, image_size, preserve_argb
+        )
         artwork_output = train_input_dir / f"pokemon_{pair['pokemon_id']}.png"
         artwork_img.save(artwork_output, "PNG")
 
         # Process sprite (target)
         sprite_img = Image.open(pair["sprite_path"])
-        sprite_img = resize_with_padding(sprite_img, image_size)
+        if preserve_argb:
+            sprite_img = sprite_img.convert("RGBA")
+        else:
+            sprite_img = sprite_img.convert("RGB")
+        sprite_img = resize_with_padding(sprite_img, image_size, preserve_argb)
         sprite_output = train_target_dir / f"pokemon_{pair['pokemon_id']}.png"
         sprite_img.save(sprite_output, "PNG")
 
-    # Process validation pairs
-    print(f"Processing {len(val_pairs)} validation pairs...")
+    # Process validation pairs with ARGB support
+    print(f"Processing {len(val_pairs)} validation pairs with ARGB support...")
     for i, pair in enumerate(val_pairs):
         # Process artwork (input)
         artwork_img = Image.open(pair["artwork_path"])
-        artwork_img = resize_with_padding(artwork_img, image_size)
+        if preserve_argb:
+            artwork_img = artwork_img.convert("RGBA")
+        else:
+            artwork_img = artwork_img.convert("RGB")
+        artwork_img = resize_with_padding(
+            artwork_img, image_size, preserve_argb
+        )
         artwork_output = val_input_dir / f"pokemon_{pair['pokemon_id']}.png"
         artwork_img.save(artwork_output, "PNG")
 
         # Process sprite (target)
         sprite_img = Image.open(pair["sprite_path"])
-        sprite_img = resize_with_padding(sprite_img, image_size)
+        if preserve_argb:
+            sprite_img = sprite_img.convert("RGBA")
+        else:
+            sprite_img = sprite_img.convert("RGB")
+        sprite_img = resize_with_padding(sprite_img, image_size, preserve_argb)
         sprite_output = val_target_dir / f"pokemon_{pair['pokemon_id']}.png"
         sprite_img.save(sprite_output, "PNG")
 
@@ -370,6 +424,7 @@ def create_training_dataset(
         "train_pairs": len(train_pairs),
         "val_pairs": len(val_pairs),
         "image_size": image_size,
+        "preserve_argb": preserve_argb,
         "data_paths": {
             "train_input": str(train_input_dir),
             "train_target": str(train_target_dir),
@@ -1074,30 +1129,30 @@ def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
 
     print(f"Found {len(valid_pairs)} valid pairs for processing")
 
-    # Create training dataset with different scales
+    # Create training dataset with different scales and ARGB support
     scales = [128, 192, 256]
     metadata_collection = {}
 
     for scale in scales:
         scale_output_dir = processed_dir / f"input_{scale}"
-        print(f"Processing scale: {scale}x{scale}")
+        print(f"Processing scale: {scale}x{scale} with ARGB support")
 
         dataset_info = create_training_dataset(
             valid_pairs,
             scale_output_dir,
             train_split=0.85,
-            image_size=(scale, 256),  # Input scale, output 256
+            image_size=(scale, scale),  # Consistent input and output scale
+            preserve_argb=True,  # Enable ARGB support
         )
         metadata_collection[f"input_{scale}"] = dataset_info
 
     # Combine metadata
     combined_metadata = {
         "input_scales": scales,
-        "output_resolution": 256,
+        "output_resolution": "same_as_input",  # Updated to reflect consistent scaling
         "total_pairs": len(valid_pairs),
-        "preprocessing_method": (
-            "multi_scale_input_fixed_output_using_existing_functions"
-        ),
+        "preprocessing_method": ("multi_scale_consistent_with_argb_support"),
+        "argb_support": True,
         "scale_details": metadata_collection,
     }
 
