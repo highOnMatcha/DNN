@@ -56,9 +56,106 @@ from data.augmentation import (  # noqa: E402
     AUGMENTATION_PRESETS,
     get_augmentation_config,
 )
+from data.loaders import (  # noqa: E402
+    create_preprocessing_pipeline,
+    download_pokemon_data_with_cache,
+    find_valid_pairs,
+)
 
 # Initialize module logger
 logger = get_logger(__name__)
+
+
+def setup_dataset_if_missing(data_root: Path) -> bool:
+    """
+    Automatically download and prepare dataset if missing.
+
+    Args:
+        data_root: Root data directory
+
+    Returns:
+        True if dataset is ready, False if setup failed
+    """
+    pokemon_data_dir = data_root / "pokemon_complete"
+    training_data_dir = pokemon_data_dir / "processed" / "input_256"
+
+    # Check if training data already exists
+    if (
+        training_data_dir.exists()
+        and (training_data_dir / "train").exists()
+        and (training_data_dir / "val").exists()
+    ):
+        logger.info(
+            f"Training data found in {training_data_dir}, proceeding..."
+        )
+        return True
+
+    logger.info("Training data not found, setting up dataset...")
+
+    # Create data directories
+    artwork_dir = pokemon_data_dir / "artwork"
+    sprites_dir = pokemon_data_dir / "sprites"
+    artwork_dir.mkdir(parents=True, exist_ok=True)
+    sprites_dir.mkdir(parents=True, exist_ok=True)
+
+    # Download Pokemon artwork (official art)
+    logger.info(f"Downloading Pokemon artwork to {artwork_dir}...")
+    pokemon_ids = list(range(1, 899))  # Gen 1-8 Pokemon
+
+    artwork_downloaded, artwork_cached, artwork_failed = (
+        download_pokemon_data_with_cache(
+            artwork_dir, pokemon_ids, sprite_type="artwork"
+        )
+    )
+
+    # Rename artwork files to expected format
+    for artwork_file in artwork_dir.glob("*.png"):
+        if not artwork_file.name.endswith("_artwork.png"):
+            pokemon_id = artwork_file.stem.split("_")[-1]
+            new_name = f"pokemon_{pokemon_id}_artwork.png"
+            artwork_file.rename(artwork_dir / new_name)
+
+    # Download Pokemon sprites (Black/White)
+    logger.info("Downloading Pokemon Black/White sprites...")
+    sprites_downloaded, sprites_cached, sprites_failed = (
+        download_pokemon_data_with_cache(
+            sprites_dir, pokemon_ids, sprite_type="black-white"
+        )
+    )
+
+    # Rename sprite files to expected format
+    for sprite_file in sprites_dir.glob("*.png"):
+        if not sprite_file.name.endswith("_bw.png"):
+            pokemon_id = sprite_file.stem.split("_")[-1]
+            new_name = f"pokemon_{pokemon_id}_bw.png"
+            sprite_file.rename(sprites_dir / new_name)
+
+    # Find valid pairs and create training dataset
+    valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
+
+    if len(valid_pairs) < 50:  # Minimum viable dataset
+        logger.error(
+            f"Insufficient valid pairs found: {len(valid_pairs)}. "
+            "Dataset setup failed."
+        )
+        return False
+
+    logger.info(f"Found {len(valid_pairs)} valid artwork-sprite pairs")
+
+    # Create preprocessing pipeline
+    logger.info("Creating training dataset...")
+    try:
+        processed_dir, metadata = create_preprocessing_pipeline(
+            pokemon_data_dir
+        )
+        logger.info(
+            f"Dataset setup complete. {metadata.get('total_pairs', 0)} pairs "
+            "ready for training."
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to create training dataset: {e}")
+        return False
 
 
 class TransferLearningManager:
@@ -457,20 +554,19 @@ def create_data_loaders(
     """Create training and validation data loaders."""
     logger.info("Setting up data loaders...")
 
-    # Get data directory
+    # Get data directory and set up dataset if missing
     data_root = get_data_root_dir()
-    training_data_dir = Path(data_root) / "training_data"
 
-    if not training_data_dir.exists():
-        logger.error(f"Training data directory not found: {training_data_dir}")
-        logger.info("Please run the data preparation notebook first")
-        raise FileNotFoundError(
-            f"Training data directory not found: {training_data_dir}"
-        )
+    if not setup_dataset_if_missing(Path(data_root)):
+        raise RuntimeError("Failed to set up dataset")
+
+    training_data_dir = (
+        Path(data_root) / "pokemon_complete" / "processed" / "input_256"
+    )
 
     # Determine augmentation level based on training config
     if config_type in AUGMENTATION_PRESETS:
-        augmentation_level = AUGMENTATION_PRESETS[config_type]
+        augmentation_level = AUGMENTATION_PRESETS[config_type]["config"]
     else:
         augmentation_level = (
             config_type  # Use directly if it's a valid augmentation level
@@ -671,9 +767,6 @@ def _setup_argument_parser():
             "test",
             "development",
             "production",
-            "pixel_art_optimal",
-            "anti_overfitting",
-            "enhanced_training",
         ],
         help="Training configuration type",
     )

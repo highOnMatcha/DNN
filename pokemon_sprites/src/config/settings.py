@@ -336,21 +336,21 @@ def save_experiment_config(
 
 # Pre-defined configuration shortcuts for common use cases
 def get_test_config(
-    model_name: str = "pix2pix-small",
+    model_name: str = "lightweight-baseline",
 ) -> Tuple[ModelConfig, TrainingConfig]:
     """Get test configuration for quick experimentation."""
     return create_experiment_config(model_name, "test")
 
 
 def get_development_config(
-    model_name: str = "pix2pix-medium",
+    model_name: str = "sprite-optimized",
 ) -> Tuple[ModelConfig, TrainingConfig]:
     """Get development configuration for experimentation."""
     return create_experiment_config(model_name, "development")
 
 
 def get_production_config(
-    model_name: str = "pix2pix-large",
+    model_name: str = "transformer-enhanced",
 ) -> Tuple[ModelConfig, TrainingConfig]:
     """Get production configuration for final training."""
     return create_experiment_config(model_name, "production")

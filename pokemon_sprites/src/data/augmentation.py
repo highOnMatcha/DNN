@@ -355,6 +355,8 @@ AUGMENTATION_PRESETS = {
     "light": {"config": "light"},
     "standard": {"config": "standard"},
     "production": {"config": "production"},
+    "test": {"config": "light"},  # Test uses light augmentation
+    "development": {"config": "standard"},  # Development uses standard augmentation
 }
 
 
