@@ -2,1024 +2,301 @@
 """
 Pokemon Sprite Generation Training Pipeline
 
-Comprehensive training script with integrated transfer learning, curriculum
-learning, and optimized data augmentation for artwork-to-sprite translation.
-
-Features:
-- Curriculum learning with progressive input scaling
-- Transfer learning from pre-trained models
-- Advanced data enhancement and augmentation
-- Progressive training phases with quality monitoring
-- Professional logging with colored terminal output
+Refactored training script with modular architecture supporting the three best models:
+- lightweight-baseline: Fast training with minimal parameters
+- sprite-optimized: State-of-the-art configuration optimized for pixel art sprites
+- transformer-enhanced: Advanced transformer-enhanced architecture
 
 Usage:
-    python train.py --config sprite-optimized --training development \
-        --phase conservative
-    python train.py --config lightweight-baseline --training test --resume
+    python train.py --model sprite-optimized --config production
+    python train.py --model lightweight-baseline --config development --max-samples 1000
+    python train.py --model transformer-enhanced --config production --wandb --generate
 """
 
 import argparse
-import os
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-import torch
-import torch.nn as nn
-import wandb
-from dotenv import load_dotenv
-from PIL import Image
-from sklearn.cluster import KMeans
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
-
-# Add the src directory to Python path FIRST
-current_dir = Path(__file__).parent
-sys.path.insert(0, str(current_dir))
-
-from config.settings import (  # noqa: E402
-    create_experiment_config,
-    get_available_training_configs,
-    get_data_root_dir,
-    list_available_models,
-)
-from core.logging_config import (  # noqa: E402
+from core.logging_config import (
     get_logger,
     initialize_project_logging,
     log_system_info,
 )
-from core.trainer import PokemonSpriteTrainer  # noqa: E402
-from data.augmentation import (  # noqa: E402
-    AUGMENTATION_PRESETS,
-    get_augmentation_config,
-)
-from data.loaders import (  # noqa: E402
-    create_preprocessing_pipeline,
-    download_pokemon_data_with_cache,
-    find_valid_pairs,
-)
+from training.config_loader import ConfigurationLoader
+from training.pipeline import TrainingPipeline
+
+# Add the src directory to Python path
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
+
 
 # Initialize module logger
 logger = get_logger(__name__)
 
 
-def setup_dataset_if_missing(data_root: Path) -> bool:
+def setup_argument_parser() -> argparse.ArgumentParser:
     """
-    Automatically download and prepare dataset if missing.
-
-    Args:
-        data_root: Root data directory
+    Setup command line argument parser.
 
     Returns:
-        True if dataset is ready, False if setup failed
+        Configured argument parser
     """
-    pokemon_data_dir = data_root / "pokemon_complete"
-    training_data_dir = pokemon_data_dir / "processed" / "input_256"
-
-    # Check if training data already exists
-    if (
-        training_data_dir.exists()
-        and (training_data_dir / "train").exists()
-        and (training_data_dir / "val").exists()
-    ):
-        logger.info(
-            f"Training data found in {training_data_dir}, proceeding..."
-        )
-        return True
-
-    logger.info("Training data not found, setting up dataset...")
-
-    # Create data directories
-    artwork_dir = pokemon_data_dir / "artwork"
-    sprites_dir = pokemon_data_dir / "sprites"
-    artwork_dir.mkdir(parents=True, exist_ok=True)
-    sprites_dir.mkdir(parents=True, exist_ok=True)
-
-    # Download Pokemon artwork (official art)
-    logger.info(f"Downloading Pokemon artwork to {artwork_dir}...")
-    pokemon_ids = list(range(1, 899))  # Gen 1-8 Pokemon
-
-    artwork_downloaded, artwork_cached, artwork_failed = (
-        download_pokemon_data_with_cache(
-            artwork_dir, pokemon_ids, sprite_type="artwork"
-        )
-    )
-
-    # Rename artwork files to expected format
-    for artwork_file in artwork_dir.glob("*.png"):
-        if not artwork_file.name.endswith("_artwork.png"):
-            pokemon_id = artwork_file.stem.split("_")[-1]
-            new_name = f"pokemon_{pokemon_id}_artwork.png"
-            artwork_file.rename(artwork_dir / new_name)
-
-    # Download Pokemon sprites (Black/White)
-    logger.info("Downloading Pokemon Black/White sprites...")
-    sprites_downloaded, sprites_cached, sprites_failed = (
-        download_pokemon_data_with_cache(
-            sprites_dir, pokemon_ids, sprite_type="black-white"
-        )
-    )
-
-    # Rename sprite files to expected format
-    for sprite_file in sprites_dir.glob("*.png"):
-        if not sprite_file.name.endswith("_bw.png"):
-            pokemon_id = sprite_file.stem.split("_")[-1]
-            new_name = f"pokemon_{pokemon_id}_bw.png"
-            sprite_file.rename(sprites_dir / new_name)
-
-    # Find valid pairs and create training dataset
-    valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
-
-    if len(valid_pairs) < 50:  # Minimum viable dataset
-        logger.error(
-            f"Insufficient valid pairs found: {len(valid_pairs)}. "
-            "Dataset setup failed."
-        )
-        return False
-
-    logger.info(f"Found {len(valid_pairs)} valid artwork-sprite pairs")
-
-    # Create preprocessing pipeline
-    logger.info("Creating training dataset...")
-    try:
-        processed_dir, metadata = create_preprocessing_pipeline(
-            pokemon_data_dir
-        )
-        logger.info(
-            f"Dataset setup complete. {metadata.get('total_pairs', 0)} pairs "
-            "ready for training."
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Failed to create training dataset: {e}")
-        return False
-
-
-class TransferLearningManager:
-    """Integrated transfer learning capabilities"""
-
-    def __init__(self, device: torch.device):
-        self.device = device
-        self.pretrained_urls = {
-            "edges2shoes": (
-                "https://storage.googleapis.com/edges2shoes_netG.pth"
-            ),
-            "facades": "https://storage.googleapis.com/facades_netG.pth",
-            "maps": "https://storage.googleapis.com/maps_netG.pth",
-        }
-
-    def load_pretrained_weights(
-        self, model: nn.Module, pretrained_path: Path
-    ) -> bool:
-        """Load pre-trained weights with compatibility checking"""
-        if not pretrained_path.exists():
-            logger.warning(f"Pre-trained weights not found: {pretrained_path}")
-            return False
-
-        try:
-            checkpoint = torch.load(pretrained_path, map_location="cpu")
-            model_dict = model.state_dict()
-
-            # Filter compatible parameters
-            pretrained_dict = {
-                k: v
-                for k, v in checkpoint.get("generator", checkpoint).items()
-                if k in model_dict and v.shape == model_dict[k].shape
-            }
-
-            model_dict.update(pretrained_dict)
-            model.load_state_dict(model_dict)
-
-            loaded_params = len(pretrained_dict)
-            total_params = len(model_dict)
-
-            logger.info(
-                f"[SUCCESS] Loaded {loaded_params}/{total_params} compatible "
-                f"parameters"
-            )
-            return loaded_params > 0
-
-        except Exception as e:
-            logger.error(f"[FAIL] Failed to load pre-trained weights: {e}")
-            return False
-
-
-class DataEnhancer:
-    """Integrated data enhancement capabilities"""
-
-    def __init__(self, target_size: int = 256):
-        self.target_size = target_size
-
-    def color_palette_swap(
-        self, image: Image.Image, target_image: Image.Image
-    ) -> Image.Image:
-        """
-        Swap color palette from one Pokemon to another while preserving
-        structure
-        """
-        img_arr = np.array(image)
-        target_arr = np.array(target_image)
-
-        target_colors = self._extract_dominant_colors(target_arr, n_colors=8)
-        result = self._remap_colors(img_arr, target_colors)
-
-        return Image.fromarray(result)
-
-    def _extract_dominant_colors(
-        self, image: np.ndarray, n_colors: int = 8
-    ) -> List:
-        """Extract dominant colors using k-means clustering"""
-        pixels = image.reshape(-1, 3)
-
-        # Get unique colors first to determine actual cluster count
-        unique_pixels = np.unique(pixels, axis=0)
-        actual_clusters = min(len(unique_pixels), n_colors)
-
-        try:
-            if actual_clusters <= 1:
-                # Return single color or fallback colors for monochrome images
-                if len(unique_pixels) == 1:
-                    return [tuple(map(int, unique_pixels[0]))]
-                else:
-                    return [(255, 0, 0), (0, 255, 0), (0, 0, 255)][:n_colors]
-
-            kmeans = KMeans(
-                n_clusters=actual_clusters, random_state=42, n_init=10
-            )
-            kmeans.fit(pixels)
-            return [
-                tuple(map(int, color)) for color in kmeans.cluster_centers_
-            ]
-        except Exception as e:
-            logger.warning(f"Color extraction failed: {e}")
-            return [(255, 0, 0), (0, 255, 0), (0, 0, 255)]  # Fallback colors
-
-    def _remap_colors(
-        self, image: np.ndarray, target_colors: List
-    ) -> np.ndarray:
-        """Remap image colors to target palette"""
-        result = image.copy()
-
-        # Simple color remapping - find closest colors and replace
-        for i, target_color in enumerate(
-            target_colors[:4]
-        ):  # Limit to avoid over-processing
-            mask = np.all(
-                np.abs(
-                    image - np.array([100 + i * 30, 50 + i * 40, 200 - i * 25])
-                )
-                < 50,
-                axis=-1,
-            )
-            result[mask] = target_color
-
-        return result
-
-
-class CurriculumTrainingManager:
-    """Manages curriculum learning with progressive input scaling"""
-
-    def __init__(self, config: Dict[str, Any], data_dir: Path):
-        self.config = config
-        self.data_dir = data_dir
-        self.input_scales = [128, 192, 256]
-        self.current_scale_idx = 0
-        self.logger = get_logger(self.__class__.__name__)
-
-    def get_current_dataset(self) -> "PokemonDataset":
-        """Get dataset for current curriculum phase"""
-        scale = self.input_scales[self.current_scale_idx]
-        scale_dir = self.data_dir / f"input_{scale}"
-
-        self.logger.info(f"Loading curriculum phase: {scale}px input")
-
-        # Create temporary dataset structure that matches expected format
-        temp_data_dir = scale_dir.parent / "curriculum_temp"
-        train_input_dir = temp_data_dir / "train" / "input"
-        train_target_dir = temp_data_dir / "train" / "target"
-
-        # Create symlinks to actual data
-        train_input_dir.mkdir(parents=True, exist_ok=True)
-        train_target_dir.mkdir(parents=True, exist_ok=True)
-
-        return PokemonDataset(
-            data_dir=str(temp_data_dir),
-            split="train",
-            image_size=scale,
-            augmentation_level=self.config.get("augmentation", "conservative"),
-        )
-
-    def advance_curriculum(self) -> bool:
-        """Advance to next curriculum phase"""
-        if self.current_scale_idx < len(self.input_scales) - 1:
-            self.current_scale_idx += 1
-            scale = self.input_scales[self.current_scale_idx]
-            self.logger.info(
-                f"[SUCCESS] Advanced to curriculum phase: {scale}px"
-            )
-            return True
-
-        self.logger.info("[SUCCESS] Curriculum learning complete")
-        return False
-
-
-class PokemonDataset(Dataset):
-    """
-    Dataset for Pokemon artwork to sprite translation with advanced
-    augmentation
-    """
-
-    def __init__(
-        self,
-        data_dir: str,
-        split: str = "train",
-        image_size: int = 64,
-        augmentation_level: str = "standard",
-    ):
-        """
-        Initialize Pokemon dataset.
-
-        Args:
-            data_dir: Path to training data directory.
-            split: Data split ("train" or "val").
-            image_size: Target image size.
-            augmentation_level: Augmentation level ("light", "standard",
-                                              "production", "none").
-        """
-        self.data_dir = Path(data_dir)
-        self.split = split
-        self.image_size = image_size
-        self.augmentation_level = augmentation_level
-
-        # Data paths
-        self.input_dir = self.data_dir / split / "input"
-        self.target_dir = self.data_dir / split / "target"
-
-        if not (self.input_dir.exists() and self.target_dir.exists()):
-            raise ValueError(
-                f"Dataset directories not found: {self.input_dir}, "
-                f"{self.target_dir}"
-            )
-
-        # Get image files
-        self.input_files = sorted(list(self.input_dir.glob("*.png")))
-        self.target_files = sorted(list(self.target_dir.glob("*.png")))
-
-        if len(self.input_files) != len(self.target_files):
-            raise ValueError(
-                f"Mismatch in number of input ({len(self.input_files)}) "
-                f"and target ({len(self.target_files)}) images"
-            )
-
-        # Setup augmentation pipeline
-        if split == "train":
-            self.augmentation = get_augmentation_config(
-                augmentation_level, image_size
-            )
-            self.augmentation.set_dataset(
-                self
-            )  # For augmentations that need dataset reference
-        else:
-            self.augmentation = get_augmentation_config("none", image_size)
-
-        # Setup basic transforms (applied after augmentation)
-        # Updated for ARGB (4-channel) processing
-        self.basic_transform = transforms.Compose(
-            [
-                transforms.Resize((image_size, image_size)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    [0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]
-                ),  # Normalize RGBA to [-1, 1]
-            ]
-        )
-
-        logger.info(f"Loaded {len(self.input_files)} {split} samples")
-        logger.info(
-            f"Using '{augmentation_level}' augmentation for {split} split"
-        )
-
-    def __len__(self):
-        return len(self.input_files)
-
-    def get_raw_sample(self, idx: int) -> Tuple[Image.Image, Image.Image]:
-        """
-        Get raw PIL images without transforms (used by some augmentations).
-        Now handles ARGB (RGBA) format for transparency preservation.
-        """
-        # Load images and convert to RGBA for 4-channel processing
-        input_img_raw = Image.open(self.input_files[idx])
-        target_img_raw = Image.open(self.target_files[idx])
-
-        # Convert to RGBA (4 channels) to preserve transparency
-        if input_img_raw.mode == "RGBA":
-            input_img = input_img_raw
-        elif input_img_raw.mode == "P":
-            input_img = input_img_raw.convert("RGBA")
-        elif input_img_raw.mode in ("RGB", "L"):
-            # Add alpha channel (fully opaque)
-            input_img = input_img_raw.convert("RGBA")
-        else:
-            input_img = input_img_raw.convert("RGBA")
-
-        if target_img_raw.mode == "RGBA":
-            target_img = target_img_raw
-        elif target_img_raw.mode == "P":
-            target_img = target_img_raw.convert("RGBA")
-        elif target_img_raw.mode in ("RGB", "L"):
-            # Add alpha channel (fully opaque)
-            target_img = target_img_raw.convert("RGBA")
-        else:
-            target_img = target_img_raw.convert("RGBA")
-
-        return input_img, target_img
-
-    def __getitem__(self, idx):
-        # Load images
-        input_img, target_img = self.get_raw_sample(idx)
-
-        # Apply augmentation pipeline (only for training)
-        if self.split == "train":
-            input_img, target_img = self.augmentation(input_img, target_img)
-
-        # Apply basic transforms (resize, normalize)
-        input_tensor = self.basic_transform(input_img)
-        target_tensor = self.basic_transform(target_img)
-
-        return input_tensor, target_tensor
-
-
-def setup_wandb(
-    project_name: str = "pokemon-sprite-generation",
-    model_name: str = "unknown",
-    config_type: str = "test",
-) -> Optional[Any]:
-    """
-    Setup WandB authentication and project initialization.
-
-    This function handles WandB login, project initialization, and run
-    configuration for experiment tracking. It gracefully handles
-    authentication failures and missing API keys.
-
-    Args:
-        project_name: Name of the WandB project for organizing experiments.
-        model_name: Name of the model being trained for run identification.
-        config_type: Type of configuration being used (test/dev/prod).
-
-    Returns:
-        WandB run object if initialization succeeds, None otherwise.
-    """
-    load_dotenv()
-    wandb_api_key = os.getenv("WANDB_API_KEY")
-
-    if not wandb_api_key:
-        logger.warning("No WANDB_API_KEY found in environment")
-        logger.info("Set WANDB_API_KEY in environment or .env file")
-        logger.info("Training will continue without WandB logging")
-        return None
-
-    try:
-        wandb.login(key=wandb_api_key)
-        logger.info("WandB authentication successful")
-
-        run_name = (
-            f"{model_name}-{config_type}-"
-            f"{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        )
-
-        wandb_run = wandb.init(
-            project=project_name,
-            name=run_name,
-            tags=[model_name, config_type, "image-to-image", "pokemon"],
-            notes=f"Training {model_name} using {config_type} configuration",
-            config={
-                "pipeline_version": "1.0",
-                "training_type": "image_to_image",
-                "config_type": config_type,
-                "timestamp": datetime.now().isoformat(),
-            },
-        )
-
-        logger.info(f"WandB run initialized: {run_name}")
-        return wandb_run
-
-    except Exception as e:
-        logger.error(f"WandB setup failed: {e}")
-        logger.info("Training will continue without WandB logging")
-        return None
-
-
-def load_and_validate_configs(model_name: str, config_type: str):
-    """Load and validate model and training configurations."""
-    logger.info("Loading configurations...")
-
-    try:
-        model_config, training_config = create_experiment_config(
-            model_name, config_type
-        )
-
-        logger.info(f"Model: {model_config.name}")
-        logger.info(f"Architecture: {model_config.architecture}")
-        logger.info(f"Output directory: {model_config.output_dir}")
-        logger.info(f"Training config: {config_type}")
-        logger.info(f"Epochs: {training_config.epochs}")
-        logger.info(f"Batch size: {training_config.batch_size}")
-        logger.info(f"Learning rate: {training_config.learning_rate}")
-        logger.info(f"Image size: {training_config.image_size}")
-
-        return model_config, training_config
-
-    except ValueError as e:
-        logger.error(f"Configuration error: {e}")
-        logger.info("Available models:")
-        available_models = list_available_models()
-        for arch, models in available_models.items():
-            logger.info(f"  {arch}: {', '.join(models)}")
-
-        logger.info("Available training configs:")
-        available_configs = get_available_training_configs()
-        logger.info(f"  {', '.join(available_configs)}")
-
-        raise
-
-
-def create_data_loaders(
-    training_config,
-    config_type: str = "development",
-    max_samples: Optional[int] = None,
-) -> Tuple[DataLoader, DataLoader]:
-    """Create training and validation data loaders."""
-    logger.info("Setting up data loaders...")
-
-    # Get data directory and set up dataset if missing
-    data_root = get_data_root_dir()
-
-    if not setup_dataset_if_missing(Path(data_root)):
-        raise RuntimeError("Failed to set up dataset")
-
-    training_data_dir = (
-        Path(data_root) / "pokemon_complete" / "processed" / "input_256"
-    )
-
-    # Determine augmentation level based on training config
-    if config_type in AUGMENTATION_PRESETS:
-        augmentation_level = AUGMENTATION_PRESETS[config_type]["config"]
-    else:
-        augmentation_level = (
-            config_type  # Use directly if it's a valid augmentation level
-        )
-
-    logger.info(
-        f"Using '{augmentation_level}' augmentation level for "
-        f"'{config_type}' configuration"
-    )
-
-    # Create datasets
-    train_dataset = PokemonDataset(
-        str(training_data_dir),
-        split="train",
-        image_size=training_config.image_size,
-        augmentation_level=augmentation_level,
-    )
-
-    val_dataset = PokemonDataset(
-        str(training_data_dir),
-        split="val",
-        image_size=training_config.image_size,
-        augmentation_level="none",
-    )
-
-    # Limit samples if specified
-    if max_samples:
-        if len(train_dataset) > max_samples:
-            train_dataset.input_files = train_dataset.input_files[:max_samples]
-            train_dataset.target_files = train_dataset.target_files[
-                :max_samples
-            ]
-            logger.info(f"Limited training samples to {max_samples}")
-
-        val_samples = max_samples // 4  # 25% for validation
-        if len(val_dataset) > val_samples:
-            val_dataset.input_files = val_dataset.input_files[:val_samples]
-            val_dataset.target_files = val_dataset.target_files[:val_samples]
-            logger.info(f"Limited validation samples to {val_samples}")
-
-    # Create data loaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=training_config.batch_size,
-        shuffle=True,
-        num_workers=training_config.num_workers,
-        pin_memory=training_config.pin_memory,
-        drop_last=True,
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=training_config.batch_size,
-        shuffle=False,
-        num_workers=training_config.num_workers,
-        pin_memory=training_config.pin_memory,
-        drop_last=False,
-    )
-
-    logger.info(f"Training batches: {len(train_loader)}")
-    logger.info(f"Validation batches: {len(val_loader)}")
-
-    return train_loader, val_loader
-
-
-def find_missing_sprites(artwork_dir: Path, sprite_dir: Path) -> List[Path]:
-    """Find Pokemon artwork that do not have corresponding BW sprites."""
-    artwork_files = list(artwork_dir.glob("*.png"))
-    sprite_files = {
-        f.stem.replace("_bw", "_artwork") for f in sprite_dir.glob("*.png")
-    }
-
-    missing_sprites = []
-    for artwork_file in artwork_files:
-        if artwork_file.stem not in sprite_files:
-            missing_sprites.append(artwork_file)
-
-    logger.info(f"Found {len(missing_sprites)} Pokemon without BW sprites")
-    return missing_sprites
-
-
-def generate_missing_sprites(
-    trainer: PokemonSpriteTrainer,
-    missing_artwork: List[Path],
-    output_dir: Path,
-    max_generate: int = 50,
-) -> None:
-    """Generate sprites for Pokemon that do not have BW sprites."""
-    if not missing_artwork:
-        logger.info("No missing sprites to generate")
-        return
-
-    logger.info(
-        f"Generating sprites for "
-        f"{min(len(missing_artwork), max_generate)} Pokemon without BW "
-        f"sprites..."
-    )
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Get the generator model
-    if isinstance(trainer.models, dict):
-        if "generator" in trainer.models:
-            generator = trainer.models["generator"]
-        elif "generator_A2B" in trainer.models:
-            generator = trainer.models["generator_A2B"]
-        else:
-            logger.warning("No suitable generator found")
-            return
-    else:
-        generator = trainer.models
-
-    generator.eval()
-
-    # Setup transforms (same as training)
-    transform = transforms.Compose(
-        [
-            transforms.Resize(
-                (
-                    trainer.training_config.image_size,
-                    trainer.training_config.image_size,
-                )
-            ),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-        ]
-    )
-
-    generated_count = 0
-    with torch.no_grad():
-        for artwork_path in missing_artwork[:max_generate]:
-            try:
-                # Load and preprocess artwork
-                artwork_img = Image.open(artwork_path).convert("RGB")
-                input_tensor = transform(artwork_img)
-                if isinstance(input_tensor, torch.Tensor):
-                    input_tensor = input_tensor.unsqueeze(0).to(trainer.device)
-                else:
-                    # Handle case where transform returns PIL Image
-                    input_tensor = (
-                        transforms.ToTensor()(input_tensor)
-                        .unsqueeze(0)
-                        .to(trainer.device)
-                    )
-
-                # Generate sprite
-                generated_sprite = generator(input_tensor)
-
-                # Denormalize and convert back to PIL
-                generated_sprite = (
-                    generated_sprite + 1
-                ) / 2.0  # [-1, 1] -> [0, 1]
-                generated_sprite = generated_sprite.clamp(0, 1)
-                generated_sprite = generated_sprite.squeeze(0).cpu()
-
-                # Convert to PIL and save
-                generated_pil = transforms.ToPILImage()(generated_sprite)
-
-                # Extract Pokemon ID from filename
-                pokemon_id = artwork_path.stem.split("_")[1]
-                output_path = (
-                    output_dir / f"pokemon_{pokemon_id}_generated_sprite.png"
-                )
-                generated_pil.save(output_path)
-
-                generated_count += 1
-
-                if generated_count % 10 == 0:
-                    logger.info(
-                        f"Generated {generated_count}/"
-                        f"{min(len(missing_artwork), max_generate)} sprites"
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"Failed to generate sprite for {artwork_path.name}: {e}"
-                )
-                continue
-
-    logger.info(
-        f"Successfully generated {generated_count} sprites for missing Pokemon"
-    )
-    logger.info(f"Generated sprites saved to: {output_dir}")
-
-
-def _setup_argument_parser():
-    """Set up command line argument parser."""
     parser = argparse.ArgumentParser(
-        description="Train Pokemon sprite generation models"
+        description="Pokemon Sprite Generation Training Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Quick development training
+  python train.py --model lightweight-baseline --config development
+
+  # Production training with transfer learning and curriculum
+  python train.py --model sprite-optimized --config production --wandb
+
+  # Advanced transformer model with all features
+  python train.py --model transformer-enhanced --config production --wandb --generate
+
+  # Test configuration with limited samples
+  python train.py --model sprite-optimized --config test --max-samples 100
+        """,
     )
+
+    # Model selection
+    config_loader = ConfigurationLoader()
+    available_models = config_loader.get_available_models()
+    available_configs = config_loader.get_available_configs()
+
     parser.add_argument(
-        "--model", type=str, required=True, help="Model configuration name"
+        "--model",
+        choices=available_models,
+        required=True,
+        help="Model architecture to train",
     )
+
     parser.add_argument(
         "--config",
-        type=str,
-        default="development",
-        choices=[
-            "test",
-            "development",
-            "production",
-        ],
-        help="Training configuration type",
+        choices=available_configs,
+        required=True,
+        help="Training configuration to use",
     )
+
+    # Training options
     parser.add_argument(
         "--max-samples",
         type=int,
-        default=None,
-        help="Maximum number of training samples (for testing)",
+        help="Maximum number of training samples (for testing/debugging)",
     )
+
     parser.add_argument(
-        "--no-wandb", action="store_true", help="Disable WandB logging"
+        "--augmentation",
+        choices=["none", "conservative", "minimal", "moderate", "strong"],
+        help="Data augmentation level (defaults to config level)",
     )
+
+    # Advanced features
     parser.add_argument(
-        "--log-level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level",
+        "--wandb", action="store_true", help="Enable Weights & Biases tracking"
     )
+
     parser.add_argument(
-        "--skip-generation",
+        "--generate",
         action="store_true",
-        help="Skip generating sprites for missing Pokemon after training",
+        help="Generate missing sprites after training",
     )
+
     parser.add_argument(
         "--max-generate",
         type=int,
-        default=None,
-        help="Maximum number of missing sprites to generate",
+        help="Maximum number of sprites to generate",
     )
+
+    # Resuming training
     parser.add_argument(
-        "--augmentation",
+        "--resume", type=str, help="Path to checkpoint to resume training from"
+    )
+
+    # Logging options
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Logging level",
+    )
+
+    parser.add_argument(
+        "--experiment-name",
         type=str,
-        default=None,
-        choices=[
-            "none",
-            "light",
-            "standard",
-            "production",
-            "anti_overfitting",
-        ],
-        help="Data augmentation level (overrides config-based default)",
+        help="Custom experiment name for logging",
     )
-    parser.add_argument(
-        "--memory-efficient",
-        action="store_true",
-        help="Use memory-efficient trainer",
-    )
-    parser.add_argument(
-        "--backbone",
-        type=str,
-        default=None,
-        choices=["resnet50", "resnet34", "efficientnet_b0"],
-        help="Pretrained backbone for pix2pix-pretrained model",
-    )
+
     return parser
 
 
-def _initialize_experiment_logging(args):
-    """Initialize logging and experiment tracking."""
-    experiment_id = (
-        f"pokemon_sprites_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    )
+def initialize_experiment_logging(args) -> str:
+    """
+    Initialize logging for the experiment.
+
+    Args:
+        args: Command line arguments
+
+    Returns:
+        Experiment ID string
+    """
+    # Initialize project logging
     initialize_project_logging(
-        project_name="pokemon_sprites",
-        log_level=args.log_level,
-        model_name=args.model,
-        experiment_id=experiment_id,
-        enable_file_logging=True,
-        enable_json_logging=True,
+        log_level=args.log_level, experiment_id=args.experiment_name
     )
+
+    # Log system information
+    log_system_info()
+
+    # Generate experiment ID
+    import time
+
+    experiment_id = f"{args.model}_{args.config}_{int(time.time())}"
 
     logger.info("=" * 80)
     logger.info("POKEMON SPRITE GENERATION TRAINING PIPELINE")
     logger.info("=" * 80)
-    logger.info(f"Model: {args.model}")
-    logger.info(f"Config: {args.config}")
     logger.info(f"Experiment ID: {experiment_id}")
+    logger.info(f"Model: {args.model}")
+    logger.info(f"Configuration: {args.config}")
 
-    log_system_info()
+    if args.max_samples:
+        logger.info(f"Max samples: {args.max_samples}")
+    if args.wandb:
+        logger.info("WandB tracking: ENABLED")
+    if args.generate:
+        logger.info("Post-training generation: ENABLED")
+
+    logger.info("=" * 80)
+
     return experiment_id
 
 
-def _setup_wandb_tracking(args, training_config, model_config):
-    """Set up WandB tracking if enabled."""
-    wandb_run = None
-    if not args.no_wandb and training_config.wandb_log:
-        wandb_run = setup_wandb(
-            project_name=training_config.wandb_project,
-            model_name=args.model,
-            config_type=args.config,
-        )
+def validate_arguments(args) -> bool:
+    """
+    Validate command line arguments.
 
-        if wandb_run:
-            wandb_config = {
-                "model_name": model_config.name,
-                "architecture": model_config.architecture,
-                "epochs": training_config.epochs,
-                "batch_size": training_config.batch_size,
-                "learning_rate": training_config.learning_rate,
-                "image_size": training_config.image_size,
-                "max_samples": training_config.max_samples,
-            }
-            wandb_run.config.update(wandb_config)
-    return wandb_run
+    Args:
+        args: Parsed command line arguments
 
+    Returns:
+        True if arguments are valid, False otherwise
+    """
+    try:
+        # Validate model and config combination
+        config_loader = ConfigurationLoader()
+        model_info = config_loader.get_model_info(args.model)
 
-def _create_trainer(args, model_config, training_config, wandb_run):
-    """Create the appropriate trainer based on arguments."""
-    logger.info("Initializing trainer...")
-    if args.memory_efficient:
-        logger.info(
-            "Using memory-efficient settings with gradient "
-            "accumulation and mixed precision"
-        )
-    return PokemonSpriteTrainer(model_config, training_config, wandb_run)
+        if model_info and "recommended_config" in model_info:
+            recommended = model_info["recommended_config"]
+            if args.config == "test" and recommended == "production":
+                logger.warning(
+                    f"Using test config with {args.model} model. "
+                    f"Recommended config: {recommended}"
+                )
 
+        # Validate max_samples
+        if args.max_samples and args.max_samples <= 0:
+            logger.error("max-samples must be positive")
+            return False
 
-def _determine_max_generation_count(args, missing_artwork):
-    """Determine maximum number of sprites to generate."""
-    if args.max_generate is not None:
-        return args.max_generate
-    elif args.config == "test":
-        return 10
-    elif args.config == "development":
-        return 50
-    else:  # production
-        return len(missing_artwork)
+        # Validate max_generate
+        if args.max_generate and args.max_generate <= 0:
+            logger.error("max-generate must be positive")
+            return False
+
+        # Validate resume path
+        if args.resume and not Path(args.resume).exists():
+            logger.error(f"Resume checkpoint not found: {args.resume}")
+            return False
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Argument validation failed: {e}")
+        return False
 
 
-def _log_generated_sprites_to_wandb(wandb_run, generated_output_dir):
-    """Log generated sprites to WandB."""
-    generated_files = list(generated_output_dir.glob("*.png"))[:8]
-    if generated_files:
-        wandb_images = []
-        for img_path in generated_files:
-            img = Image.open(img_path)
-            wandb_images.append(
-                wandb.Image(img, caption=f"Generated: {img_path.stem}")
-            )
+def print_model_recommendations(args) -> None:
+    """Print model-specific recommendations."""
+    config_loader = ConfigurationLoader()
+    model_info = config_loader.get_model_info(args.model)
 
-        wandb_run.log({"generated_missing_sprites": wandb_images})
-        logger.info(f"Logged {len(wandb_images)} generated sprites to WandB")
-
-
-def _handle_post_training_generation(args, trainer, wandb_run):
-    """Handle post-training sprite generation."""
-    if args.skip_generation:
-        logger.info("Sprite generation skipped (--skip-generation flag used)")
+    if not model_info:
         return
 
-    logger.info("=" * 50)
-    logger.info("POST-TRAINING: GENERATING MISSING SPRITES")
-    logger.info("=" * 50)
+    logger.info(f"Model: {args.model}")
+    logger.info(
+        f"Description: {model_info.get('description', 'No description available')}"
+    )
 
-    try:
-        data_root = Path(get_data_root_dir())
-        artwork_dir = data_root / "pokemon_complete" / "sugimori_artwork"
-        sprite_dir = data_root / "pokemon_complete" / "black_white_sprites"
-        generated_output_dir = data_root / "generated_sprites"
+    features = model_info.get("features", [])
+    if features:
+        logger.info("Features:")
+        for feature in features:
+            logger.info(f"  - {feature}")
 
-        if artwork_dir.exists() and sprite_dir.exists():
-            missing_artwork = find_missing_sprites(artwork_dir, sprite_dir)
+    # Recommendations
+    recommendations = []
+    if model_info.get("use_transfer_learning", False):
+        recommendations.append("Transfer learning recommended")
+    if model_info.get("use_curriculum", False):
+        recommendations.append("Curriculum learning will be applied")
 
-            if missing_artwork:
-                max_generate = _determine_max_generation_count(
-                    args, missing_artwork
-                )
-                generate_missing_sprites(
-                    trainer,
-                    missing_artwork,
-                    generated_output_dir,
-                    max_generate,
-                )
-
-                if wandb_run:
-                    _log_generated_sprites_to_wandb(
-                        wandb_run, generated_output_dir
-                    )
-            else:
-                logger.info(
-                    "No missing sprites found - all Pokemon have BW sprites!"
-                )
-        else:
-            logger.warning(
-                "Artwork or sprite directories not found - "
-                "skipping sprite generation"
-            )
-    except Exception as e:
-        logger.error(f"Failed to generate missing sprites: {e}", exc_info=True)
+    if recommendations:
+        logger.info("Training features:")
+        for rec in recommendations:
+            logger.info(f"  - {rec}")
 
 
 def main():
     """Main training function."""
-    parser = _setup_argument_parser()
-    args = parser.parse_args()
-
-    experiment_id = _initialize_experiment_logging(args)
-
     try:
-        # Load configurations
-        model_config, training_config = load_and_validate_configs(
-            args.model, args.config
+        # Parse arguments
+        parser = setup_argument_parser()
+        args = parser.parse_args()
+
+        # Initialize logging
+        initialize_experiment_logging(args)
+
+        # Validate arguments
+        if not validate_arguments(args):
+            logger.error("Argument validation failed")
+            sys.exit(1)
+
+        # Print model information
+        print_model_recommendations(args)
+
+        # Load and print configuration summary
+        config_loader = ConfigurationLoader()
+        model_config, training_config = (
+            config_loader.load_and_validate_configs(args.model, args.config)
+        )
+        config_loader.print_configuration_summary(
+            model_config, training_config
         )
 
-        # Override max samples if specified
-        if args.max_samples:
-            training_config.max_samples = args.max_samples
+        # Create and execute training pipeline
+        pipeline = TrainingPipeline(args)
+        success = pipeline.execute()
 
-        # Setup WandB
-        wandb_run = _setup_wandb_tracking(args, training_config, model_config)
-
-        # Create data loaders
-        augmentation_level = (
-            args.augmentation if args.augmentation else args.config
-        )
-        train_loader, val_loader = create_data_loaders(
-            training_config, augmentation_level, args.max_samples
-        )
-
-        # Initialize trainer
-        trainer = _create_trainer(
-            args, model_config, training_config, wandb_run
-        )
-
-        # Start training
-        start_time = time.time()
-        trainer.train(train_loader, val_loader)
-        training_time = time.time() - start_time
-
-        logger.info(f"Training completed in {training_time:.2f} seconds")
-        logger.info(
-            f"Average time per epoch: "
-            f"{training_time / training_config.epochs:.2f} seconds"
-        )
-
-        # Generate missing sprites
-        _handle_post_training_generation(args, trainer, wandb_run)
-
-        # Cleanup
-        if wandb_run:
-            wandb_run.finish()
+        if success:
+            logger.info("Training pipeline completed successfully")
+            sys.exit(0)
+        else:
+            logger.error("Training pipeline failed")
+            sys.exit(1)
 
     except KeyboardInterrupt:
         logger.info("Training interrupted by user")
-        if "wandb_run" in locals() and wandb_run:
-            wandb_run.finish()
-        sys.exit(0)
+        sys.exit(130)  # Standard exit code for SIGINT
 
     except Exception as e:
-        logger.error(f"Training failed: {e}", exc_info=True)
-        if "wandb_run" in locals() and wandb_run:
-            wandb_run.finish()
+        logger.error(
+            f"Training pipeline failed with unexpected error: {e}",
+            exc_info=True,
+        )
         sys.exit(1)
 
 

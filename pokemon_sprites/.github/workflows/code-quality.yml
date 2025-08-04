@@ -90,7 +90,7 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-fail-under=65
+        pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-fail-under=70
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

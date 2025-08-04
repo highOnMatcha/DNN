@@ -52,19 +52,25 @@ class PretrainedBackboneGenerator(nn.Module):
         self.freeze_backbone = freeze_backbone
 
         if backbone == "resnet50":
-            backbone_model = models.resnet50(pretrained=True)
+            backbone_model = models.resnet50(
+                weights=models.ResNet50_Weights.DEFAULT
+            )
             self.backbone = nn.Sequential(
                 *list(backbone_model.children())[:-2]
             )  # Remove avgpool and fc
             backbone_features = 2048
         elif backbone == "resnet34":
-            backbone_model = models.resnet34(pretrained=True)
+            backbone_model = models.resnet34(
+                weights=models.ResNet34_Weights.DEFAULT
+            )
             self.backbone = nn.Sequential(
                 *list(backbone_model.children())[:-2]
             )
             backbone_features = 512
         elif backbone == "efficientnet_b0":
-            backbone_model = models.efficientnet_b0(pretrained=True)
+            backbone_model = models.efficientnet_b0(
+                weights=models.EfficientNet_B0_Weights.DEFAULT
+            )
             self.backbone = backbone_model.features
             backbone_features = 1280
         else:

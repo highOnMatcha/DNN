@@ -1,8 +1,8 @@
 """
-Advanced unit tests for train.py module focusing on main training pipeline functionality.
+Comprehensive unit tests for train.py module and training components.
 
-This module tests the comprehensive training pipeline including data loading,
-model initialization, training workflows, and command-line interface components.
+This module tests the training pipeline components including data loading,
+model initialization, training workflows, and command-line interface functionality.
 """
 
 import argparse

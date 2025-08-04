@@ -726,6 +726,12 @@ class TestLoggingConfiguration(unittest.TestCase):
             progress_logger = TrainingProgressLogger(logger_name)
             self.assertIsInstance(progress_logger, TrainingProgressLogger)
 
+    def test_get_logger_basic_functionality(self):
+        """Test basic logger retrieval functionality."""
+        test_logger = get_logger("test_module")
+        self.assertIsNotNone(test_logger)
+        self.assertEqual(test_logger.name, "test_module")
+
 
 if __name__ == "__main__":
     # Suppress warnings for cleaner test output

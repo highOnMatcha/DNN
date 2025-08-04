@@ -766,6 +766,13 @@ class TestConfigurationEnvironmentIntegration(unittest.TestCase):
 
         self.assertTrue(data_params_success)
 
+    def test_get_data_root_dir_basic_functionality(self):
+        """Test basic data root directory retrieval."""
+        root_dir = get_data_root_dir()
+        self.assertIsNotNone(root_dir)
+        # Should return a string path
+        self.assertIsInstance(root_dir, str)
+
 
 if __name__ == "__main__":
     unittest.main()
