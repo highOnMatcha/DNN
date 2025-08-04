@@ -60,7 +60,7 @@ check:
 	@echo "Running auto-fix and quality checks..."
 	./scripts/lint.sh --fix || true
 	@echo "Running tests with coverage..."
-	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=50
+	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=65
 	@echo ""
 	@echo "Coverage report generated in htmlcov/ directory"
 	@echo "All quality checks completed!"
@@ -88,10 +88,10 @@ test-performance:
 
 test-coverage:
 	@echo "Running tests with coverage..."
-	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=50
+	pytest tests/ -v --tb=short --cov=src --cov-report=html --cov-report=term --cov-fail-under=65
 	@echo ""
 	@echo "Coverage report generated in htmlcov/ directory"
-	@echo "Current coverage requirement: 50% (target achieved!)"
+	@echo "Current coverage requirement: 65% (target achieved!)"
 
 coverage-report:
 	@echo "Generating coverage report from existing data..."
@@ -138,4 +138,4 @@ ci-check:
 	autoflake --check --remove-all-unused-imports --remove-unused-variables --remove-duplicate-keys --expand-star-imports --recursive .
 
 ci-test:
-	pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-fail-under=50
+	pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-fail-under=65

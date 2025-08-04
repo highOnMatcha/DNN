@@ -25,7 +25,7 @@ from core.logging_config import (
     get_logger,
     log_model_summary,
 )
-from core.models import count_parameters, count_total_parameters, create_model
+from models import count_parameters, count_total_parameters, create_model
 
 
 class PokemonSpriteTrainer:

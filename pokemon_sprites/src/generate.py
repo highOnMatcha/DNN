@@ -25,7 +25,7 @@ from core.logging_config import (  # noqa: E402
     get_logger,
     initialize_project_logging,
 )
-from core.models import create_model  # noqa: E402
+from models import create_model  # noqa: E402
 
 logger = get_logger(__name__)
 

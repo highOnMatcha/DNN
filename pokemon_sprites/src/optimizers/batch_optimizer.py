@@ -17,7 +17,7 @@ import torch.nn as nn
 # Add core modules to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from core.models import Pix2PixDiscriminator, Pix2PixGenerator  # noqa: E402
+from models import Pix2PixDiscriminator, Pix2PixGenerator  # noqa: E402
 
 
 class BatchSizeOptimizer:

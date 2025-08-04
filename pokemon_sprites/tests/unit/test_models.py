@@ -11,7 +11,7 @@ import unittest
 import torch
 import torch.nn as nn
 
-from src.core.models import (
+from src.models import (
     AttentionBlock,
     ConvBlock,
     CycleGANDiscriminator,

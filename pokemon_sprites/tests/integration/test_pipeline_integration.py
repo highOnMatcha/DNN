@@ -28,9 +28,9 @@ from config.settings import (
     get_models_root_dir,
 )
 from core.logging_config import initialize_project_logging
-from core.models import Pix2PixDiscriminator, Pix2PixGenerator
 from data.augmentation import PairedRandomHorizontalFlip
 from data.loaders import create_training_dataset, find_valid_pairs
+from models import Pix2PixDiscriminator, Pix2PixGenerator
 
 # Import test utilities
 from tests import TestDataFactory

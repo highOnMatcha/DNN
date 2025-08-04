@@ -28,7 +28,6 @@ src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
 from core.logging_config import initialize_project_logging
-from core.models import Pix2PixDiscriminator, Pix2PixGenerator
 from data.augmentation import (
     PairedColorJitter,  # Use PairedColorJitter instead of IndependentColorJitter
 )
@@ -43,6 +42,7 @@ from data.loaders import (
     find_valid_pairs,
     process_image_pairs,
 )
+from models import Pix2PixDiscriminator, Pix2PixGenerator
 
 # Import test utilities
 from tests import TestDataFactory
