@@ -34,7 +34,7 @@ class PokemonDataset(Dataset):
         self,
         data_dir: str,
         split: str = "train",
-        image_size: int = 128,
+        image_size: int = 96,
         augmentation_level: str = "conservative",
     ):
         """
@@ -43,7 +43,7 @@ class PokemonDataset(Dataset):
         Args:
             data_dir: Path to training data directory
             split: Data split ("train" or "val")
-            image_size: Target image size (reduced to 128 for better sprite handling)
+            image_size: Target image size (reduced to 96 for sprite handling)
             augmentation_level: Augmentation level
         """
         self.data_dir = Path(data_dir)
@@ -163,9 +163,9 @@ def create_data_loaders(
         Tuple of (train_loader, val_loader)
     """
     try:
-        # Get data directory - prefer 128 for better sprite handling
+        # Get data directory - prefer 96 for sprite handling
         data_root = Path(get_data_root_dir())
-        target_size = getattr(training_config, "image_size", 128)
+        target_size = getattr(training_config, "image_size", 96)
         data_dir = (
             data_root
             / "pokemon_complete"
@@ -173,12 +173,25 @@ def create_data_loaders(
             / f"input_{target_size}"
         )
 
-        # Fallback to 256 if preferred size doesn't exist
+        # Fallback hierarchy: try 256, then 128, then 96
         if not data_dir.exists():
-            data_dir = (
-                data_root / "pokemon_complete" / "processed" / "input_256"
-            )
-            target_size = 256
+            # Try 256 first
+            fallback_dir = data_root / "pokemon_complete" / "processed" / "input_256"
+            if fallback_dir.exists():
+                data_dir = fallback_dir
+                target_size = 256
+            else:
+                # Try 128
+                fallback_dir = data_root / "pokemon_complete" / "processed" / "input_128"
+                if fallback_dir.exists():
+                    data_dir = fallback_dir
+                    target_size = 128
+                else:
+                    # Try 96
+                    fallback_dir = data_root / "pokemon_complete" / "processed" / "input_96"
+                    if fallback_dir.exists():
+                        data_dir = fallback_dir
+                        target_size = 96
 
         if not data_dir.exists():
             raise ValueError(f"Training data directory not found: {data_dir}")

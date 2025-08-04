@@ -36,29 +36,63 @@
           "input_channels": 4,
           "output_channels": 4,
           "ngf": 64,
-          "n_blocks": 9,
+          "n_blocks": 6,
           "norm_layer": "instance",
-          "dropout": 0.3,
-          "use_attention": true
+          "dropout": 0.2,
+          "use_attention": false
+        },
+        "discriminator": {
+          "input_channels": 8,
+          "ndf": 64,
+          "n_layers": 2,
+          "norm_layer": "instance",
+          "use_spectral_norm": false
+        },
+        "image_size": 96,
+        "beta1": 0.5,
+        "beta2": 0.999,
+        "lambda_l1": 100.0,
+        "lambda_perceptual": 0.05,
+        "lambda_pixel_art": 5.0
+      }
+    },
+    "sprite-production": {
+      "name": "sprite-production",
+      "description": "Production-ready sprite generation model with enhanced stability and quality",
+      "output_dir": "./models/sprite_production",
+      "architecture": "pix2pix",
+      "parameters": {
+        "generator": {
+          "input_channels": 4,
+          "output_channels": 4,
+          "ngf": 64,
+          "n_blocks": 8,
+          "norm_layer": "instance",
+          "dropout": 0.1,
+          "use_attention": true,
+          "use_self_attention": true
         },
         "discriminator": {
           "input_channels": 8,
           "ndf": 64,
           "n_layers": 3,
           "norm_layer": "instance",
-          "use_spectral_norm": true
+          "use_spectral_norm": true,
+          "use_gradient_penalty": true
         },
-        "image_size": 256,
+        "image_size": 96,
         "beta1": 0.5,
         "beta2": 0.999,
-        "lambda_l1": 150.0,
-        "lambda_perceptual": 0.1,
-        "lambda_pixel_art": 10.0
+        "lambda_l1": 80.0,
+        "lambda_perceptual": 0.08,
+        "lambda_pixel_art": 8.0,
+        "lambda_feature_matching": 2.0,
+        "lambda_gradient_penalty": 10.0
       }
     },
     "transformer-enhanced": {
       "name": "transformer-enhanced",
-      "description": "Advanced transformer-enhanced architecture for complex artwork-to-sprite mappings",
+      "description": "Experimental transformer-enhanced architecture for research and complex artwork mappings",
       "output_dir": "./models/transformer_enhanced",
       "architecture": "pix2pix_transformer",
       "parameters": {
@@ -101,8 +135,8 @@
     },
     "development": {
       "epochs": 50,
-      "batch_size": 16,
-      "learning_rate": 0.0002,
+      "batch_size": 8,
+      "learning_rate": 0.0001,
       "eval_frequency": 5,
       "save_frequency": 10,
       "max_samples": 1000,
@@ -267,6 +301,24 @@
       "output_channels": 4,
       "optimization_timestamp": "2025-08-03T12:05:40.717215"
     },
+    "sprite-production": {
+      "model_name": "sprite-production",
+      "learning_rate": 0.00008,
+      "batch_size": 16,
+      "epochs": 300,
+      "warmup_epochs": 15,
+      "validation_frequency": 5,
+      "checkpoint_frequency": 10,
+      "lr_schedule": "cosine_annealing_with_restarts",
+      "weight_decay": 0.0001,
+      "beta1": 0.5,
+      "beta2": 0.999,
+      "gradient_clip": 0.5,
+      "data_format": "argb",
+      "input_channels": 4,
+      "output_channels": 4,
+      "optimization_timestamp": "2025-08-05T00:00:00.000000"
+    },
     "transformer-enhanced": {
       "model_name": "transformer-enhanced",
       "learning_rate": 0.0003087062427095979,
@@ -290,7 +342,9 @@
     "last_optimization": "2025-08-03T12:05:40.717498",
     "optimized_models": [
       "lightweight-baseline",
-      "sprite-optimized",
+      "sprite-optimized", 
+      "sprite-production",
+      "sprite-ultimate",
       "transformer-enhanced"
     ],
     "optimization_version": "v1.0"

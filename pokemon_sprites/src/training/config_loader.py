@@ -30,6 +30,7 @@ class ConfigurationLoader:
         self.supported_models = [
             "lightweight-baseline",
             "sprite-optimized",
+            "sprite-production",
             "transformer-enhanced",
         ]
         self.supported_configs = ["test", "development", "production"]

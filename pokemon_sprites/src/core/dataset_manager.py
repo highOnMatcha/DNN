@@ -10,6 +10,7 @@ from pathlib import Path
 
 from core.logging_config import get_logger
 from data.loaders import (
+    check_existing_raw_data,
     create_preprocessing_pipeline,
     download_pokemon_data_with_cache,
     find_valid_pairs,
@@ -40,7 +41,7 @@ class DatasetManager:
         self.artwork_dir = self.pokemon_data_dir / "artwork"
         self.sprites_dir = self.pokemon_data_dir / "sprites"
         self.training_data_dir = (
-            self.pokemon_data_dir / "processed" / "input_256"
+            self.pokemon_data_dir / "processed" / "input_96"
         )
 
     def is_dataset_ready(self) -> bool:
@@ -69,16 +70,26 @@ class DatasetManager:
             )
             return True
 
-        logger.info("Training data not found, setting up dataset...")
+        logger.info("Training data not found, checking for raw data...")
 
         try:
             # Create data directories
             self.artwork_dir.mkdir(parents=True, exist_ok=True)
             self.sprites_dir.mkdir(parents=True, exist_ok=True)
 
-            # Download and prepare data
-            if not self._download_pokemon_data():
-                return False
+            # Check if we already have sufficient raw data
+            raw_data_status = check_existing_raw_data(self.sprites_dir, self.artwork_dir)
+            
+            if raw_data_status['sufficient']:
+                logger.info(f"Found existing raw data: {raw_data_status['details']}")
+                logger.info("Skipping download, proceeding to create training dataset...")
+            else:
+                logger.info(f"Insufficient raw data: {raw_data_status['details']}")
+                logger.info("Downloading Pokemon data...")
+                
+                # Download and prepare data
+                if not self._download_pokemon_data():
+                    return False
 
             # Create training dataset
             return self._create_training_dataset()
