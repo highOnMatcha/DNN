@@ -228,9 +228,13 @@ def process_image_pairs(
                 sprite_img, target_size, preserve_argb
             )
 
-            # Save processed images
-            artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png")
-            sprite_processed.save(target_dir / f"pokemon_{pokemon_id}.png")
+            # Save processed images with explicit RGBA preservation
+            if preserve_argb:
+                artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png", "PNG", optimize=False)
+                sprite_processed.save(target_dir / f"pokemon_{pokemon_id}.png", "PNG", optimize=False)
+            else:
+                artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png")
+                sprite_processed.save(target_dir / f"pokemon_{pokemon_id}.png")
 
             successful_pairs += 1
 
@@ -381,7 +385,10 @@ def create_training_dataset(
             artwork_img, image_size, preserve_argb
         )
         artwork_output = train_input_dir / f"pokemon_{pair['pokemon_id']}.png"
-        artwork_img.save(artwork_output, "PNG")
+        if preserve_argb:
+            artwork_img.save(artwork_output, "PNG", optimize=False)
+        else:
+            artwork_img.save(artwork_output, "PNG")
 
         # Process sprite (target)
         sprite_img = Image.open(pair["sprite_path"])
@@ -391,7 +398,10 @@ def create_training_dataset(
             sprite_img = sprite_img.convert("RGB")
         sprite_img = resize_with_padding(sprite_img, image_size, preserve_argb)
         sprite_output = train_target_dir / f"pokemon_{pair['pokemon_id']}.png"
-        sprite_img.save(sprite_output, "PNG")
+        if preserve_argb:
+            sprite_img.save(sprite_output, "PNG", optimize=False)
+        else:
+            sprite_img.save(sprite_output, "PNG")
 
     # Process validation pairs with ARGB support
     print(f"Processing {len(val_pairs)} validation pairs with ARGB support...")
@@ -406,7 +416,10 @@ def create_training_dataset(
             artwork_img, image_size, preserve_argb
         )
         artwork_output = val_input_dir / f"pokemon_{pair['pokemon_id']}.png"
-        artwork_img.save(artwork_output, "PNG")
+        if preserve_argb:
+            artwork_img.save(artwork_output, "PNG", optimize=False)
+        else:
+            artwork_img.save(artwork_output, "PNG")
 
         # Process sprite (target)
         sprite_img = Image.open(pair["sprite_path"])
@@ -416,7 +429,10 @@ def create_training_dataset(
             sprite_img = sprite_img.convert("RGB")
         sprite_img = resize_with_padding(sprite_img, image_size, preserve_argb)
         sprite_output = val_target_dir / f"pokemon_{pair['pokemon_id']}.png"
-        sprite_img.save(sprite_output, "PNG")
+        if preserve_argb:
+            sprite_img.save(sprite_output, "PNG", optimize=False)
+        else:
+            sprite_img.save(sprite_output, "PNG")
 
     # Create dataset info
     dataset_info = {
