@@ -50,6 +50,10 @@ make test
 Unfortunately, the results are not very good yet. The model struggles to yield satisfactory sprite outputs. The outputs are often blurry and do not capture the details of the original artwork well. Some positive aspects are that the overall shape and color palette of the Pokemon are retained, but finer details are lost. This is mainly due to a lack of training data and the complexity of the task. The task would have been much easier if the sprites were more similar to the artwork, but a lot of time the orignal artwork will be the pokemon looking in a different direction, or in a different pose, mouth open or closed, etc.
 
 Yet we still publish one of the best results here:
+![alt text](image.png)
+![alt text](image-1.png)
+
+Another improvement could be achieved by using a more powerful model architecture, we were limited by the 16GB GDDR memory I have. And with a much larger dataset. Maybe more information about the Pokemon could be used, like their type, size, multiple artworks, etc.
 
 ## Dataset
 
