@@ -143,8 +143,8 @@
       "description": "Development configuration for experimentation"
     },
     "production": {
-      "epochs": 600,
-      "batch_size": 192,
+      "epochs": 300,
+      "batch_size": 8,
       "learning_rate": 0.0001,
       "eval_frequency": 10,
       "save_frequency": 20,
@@ -304,7 +304,7 @@
     "sprite-production": {
       "model_name": "sprite-production",
       "learning_rate": 0.00008,
-      "batch_size": 192,
+      "batch_size": 8,
       "epochs": 600,
       "warmup_epochs": 20,
       "validation_frequency": 5,

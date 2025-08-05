@@ -26,20 +26,8 @@ python src/train.py --model lightweight-baseline --config test
 python src/train.py --model sprite-optimized --config development
 
 # Production training
-python src/train.py --model transformer-enhanced --config production
+python src/train.py --model sprite-production  --config production --augmentation strong --wandb
 ```
-
-### Available Models
-
-- `lightweight-baseline` - Fast training with minimal parameters for quick experimentation
-- `sprite-optimized` - State-of-the-art configuration optimized specifically for pixel art sprite generation
-- `transformer-enhanced` - Advanced transformer-enhanced architecture for complex artwork-to-sprite mappings
-
-### Configuration Options
-
-- `test` - 5 epochs, minimal augmentation, quick debugging configuration
-- `development` - 50 epochs, standard augmentation, development configuration for experimentation
-- `production` - 200 epochs, aggressive augmentation, production training with progressive augmentation and regularization
 
 ## Generation
 
@@ -54,8 +42,14 @@ python src/generate.py --model models/best_model.pth \
 ## Testing
 
 ```bash
-python -m pytest tests/
+make test
 ```
+
+## Results
+
+Unfortunately, the results are not very good yet. The model struggles to yield satisfactory sprite outputs. The outputs are often blurry and do not capture the details of the original artwork well. Some positive aspects are that the overall shape and color palette of the Pokemon are retained, but finer details are lost. This is mainly due to a lack of training data and the complexity of the task. The task would have been much easier if the sprites were more similar to the artwork, but a lot of time the orignal artwork will be the pokemon looking in a different direction, or in a different pose, mouth open or closed, etc.
+
+Yet we still publish one of the best results here:
 
 ## Dataset
 

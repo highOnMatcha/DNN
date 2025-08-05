@@ -5,10 +5,10 @@ This module provides shared utilities used across different loss functions,
 including edge detection filters and common mathematical operations.
 """
 
-import torch
-import torch.nn.functional as F
 from typing import Tuple
 
+import torch
+import torch.nn.functional as F
 
 
 def create_sobel_filters(

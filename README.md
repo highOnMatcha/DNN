@@ -17,6 +17,10 @@ Multi-project repository for ML research and experimentation.
 - Time series analysis and stock price forecasting
 - [time_series/](./time_series/)
 
+### Pokemon Sprites (NEW)
+- Image-to-image translation for converting Pokemon artwork to Black/White sprite style
+- [pokemon_sprites/](./pokemon_sprites/)
+
 ## Quick Setup
 
 ### 1. Install shared dependencies
@@ -26,19 +30,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Choose your project and install specific requirements
+### 2. Choose the project you are interested in and install specific requirements
 ```bash
-# For LLM project
-cd llm && pip install -r requirements.txt
-
-# For segmentation project  
-cd segmentation && pip install -r requirements.txt
-
-# For time series project
-cd time_series && pip install -r requirements.txt
+cd <project_name> && pip install -r requirements.txt
 ```
 
-## Shared Infrastructure
+## Shared Infrastructure for llm project (mainly for practice)
 
 ### Database Configuration (Optional)
 PostgreSQL setup for data storage across projects.
