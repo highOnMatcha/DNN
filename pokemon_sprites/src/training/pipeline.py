@@ -201,17 +201,10 @@ class TrainingPipeline:
 
         from training.data_loaders import create_data_loaders
 
-        # Map config types to augmentation levels if not explicitly provided
-        config_to_augmentation = {
-            "test": "none",
-            "development": "light",
-            "production": "standard",
-        }
-
         augmentation_level = (
             self.args.augmentation
             if hasattr(self.args, "augmentation") and self.args.augmentation
-            else config_to_augmentation.get(self.args.config, "light")
+            else "conservative"
         )
 
         max_samples = (

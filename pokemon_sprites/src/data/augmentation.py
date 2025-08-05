@@ -13,6 +13,9 @@ import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
 
+from core.logging_config import get_logger
+logger = get_logger(__name__)
+
 
 class PairedRandomHorizontalFlip:
     """
@@ -190,11 +193,6 @@ class PairedCutout:
 
         return input_img, target_img
 
-
-# Remove NoiseAugmentation as it's counterproductive for pixel art
-# Remove MixupAugmentation as it's questionable for pixel art generation
-
-
 class AdvancedAugmentationPipeline:
     """Advanced augmentation pipeline for Pokemon sprite generation.
     Updated for ARGB (RGBA) processing."""
@@ -202,8 +200,7 @@ class AdvancedAugmentationPipeline:
     def __init__(
         self,
         config: str = "standard",
-        image_size: int = 64,
-        config_dict: Optional[Dict] = None,
+        image_size: int = 96,
     ):
         """
         Initialize augmentation pipeline.
@@ -216,125 +213,54 @@ class AdvancedAugmentationPipeline:
         """
         self.config = config
         self.image_size = image_size
-
+        logger.info(f"Initializing augmentation pipeline with config: {config}")
         # Build augmentation pipeline based on config
-        if config_dict is not None:
-            # Use config_dict for direct configuration
-            self.transforms = self._build_from_config_dict(config_dict)
-        elif config == "none":
+        if config == "none":
+            logger.info("No augmentation applied")
             self.transforms = []
-        elif config == "light":
-            self.transforms = [
-                PairedRandomHorizontalFlip(p=0.5),
-                PairedColorJitter(
-                    brightness=0.05,
-                    contrast=0.05,
-                    saturation=0.05,
-                    hue=0.02,
-                ),
-            ]
-        elif config == "standard":
-            self.transforms = [
-                PairedRandomHorizontalFlip(p=0.6),
-                PairedRandomRotation(degrees=5),  # Reduced for pixel art
-                PairedColorJitter(
-                    brightness=0.08,
-                    contrast=0.08,
-                    saturation=0.08,
-                    hue=0.03,
-                ),
-                PairedRandomAffine(
-                    degrees=0,  # No rotation - we have dedicated rotation
-                    translate=(0.05, 0.05),  # Small translation
-                    scale=(0.95, 1.05),  # Small scale variation
-                    p=0.3,
-                ),
-            ]
-        elif config == "production":
-            self.transforms = [
-                PairedRandomHorizontalFlip(p=0.7),
-                PairedRandomRotation(degrees=8),  # Moderate for pixel art
-                PairedColorJitter(
-                    brightness=0.12,
-                    contrast=0.12,
-                    saturation=0.12,
-                    hue=0.05,
-                ),
-                PairedRandomAffine(
-                    degrees=0, translate=(0.08, 0.08), scale=(0.9, 1.1), p=0.4
-                ),
-                PairedCutout(
-                    size_ratio=24, p=0.2
-                ),  # Applied to both input and target
-            ]
+        elif config is not None:
+            self.transforms = self._build_from_config(config)
         else:
             raise ValueError(f"Unknown augmentation config: {config}")
-
-    def _build_from_config_dict(self, config_dict: Dict):
-        """Build augmentation pipeline from configuration dictionary."""
-        transforms = []
-
+        
+    def _build_from_config(self, config: str) -> list:
+        """Build augmentation pipeline from configuration json."""
+        #load the json config, example above
+        import json
+        from pathlib import Path
+        config_path = Path(__file__).parent / "../config/model_configs.json"
+        with open(config_path, "r") as f:
+            config_dict = json.load(f)
+        if config not in config_dict["augmentation_configs"]:
+            raise ValueError(f"Unknown augmentation config: {config}")
+        aug_config = config_dict["augmentation_configs"][config]
+        transforms_list = []
         # Add horizontal flip
-        if config_dict.get("horizontal_flip_p", 0) > 0:
-            transforms.append(
-                PairedRandomHorizontalFlip(p=config_dict["horizontal_flip_p"])
+        if "horizontal_flip_p" in aug_config:
+            transforms_list.append(
+                PairedRandomHorizontalFlip(aug_config["horizontal_flip_p"])
             )
-
         # Add rotation
-        if config_dict.get("rotation_degrees", 0) > 0:
-            transforms.append(
-                PairedRandomRotation(degrees=config_dict["rotation_degrees"])
+        if "rotation_degrees" in aug_config:
+            transforms_list.append(
+                PairedRandomRotation(aug_config["rotation_degrees"])
             )
-
-        # Add color jitter (unified format)
-        color_jitter = config_dict.get("color_jitter", {})
-        if color_jitter:
-            # Handle both old format (input/target) and new format (unified)
-            if "input" in color_jitter:
-                # Old format - use input params for paired jitter
-                jitter_params = color_jitter["input"]
-            else:
-                # New format - direct params
-                jitter_params = color_jitter
-
-            if any(
-                jitter_params.get(k, 0) > 0
-                for k in ["brightness", "contrast", "saturation", "hue"]
-            ):
-                transforms.append(
-                    PairedColorJitter(
-                        brightness=jitter_params.get("brightness", 0),
-                        contrast=jitter_params.get("contrast", 0),
-                        saturation=jitter_params.get("saturation", 0),
-                        hue=jitter_params.get("hue", 0),
-                    )
-                )
-
+        # Add color jitter
+        if "color_jitter" in aug_config:
+            transforms_list.append(
+                PairedColorJitter(**aug_config["color_jitter"])
+            )
         # Add random affine
-        affine_config = config_dict.get("random_affine", {})
-        if affine_config.get("p", 0) > 0:
-            transforms.append(
-                PairedRandomAffine(
-                    degrees=affine_config.get("degrees", 0),
-                    translate=tuple(
-                        affine_config.get("translate", [0.0, 0.0])
-                    ),
-                    scale=tuple(affine_config.get("scale", [1.0, 1.0])),
-                    p=affine_config.get("p", 0),
-                )
+        if "random_affine" in aug_config:
+            transforms_list.append(
+                PairedRandomAffine(**aug_config["random_affine"])
             )
-
         # Add cutout
-        cutout_config = config_dict.get("cutout", {})
-        if cutout_config.get("p", 0) > 0:
-            transforms.append(
-                PairedCutout(
-                    size_ratio=cutout_config.get("size_ratio", 32),
-                    p=cutout_config.get("p", 0),
-                )
-            )
+        if "cutout" in aug_config:
+            transforms_list.append(PairedCutout(**aug_config["cutout"]))
+        # Return composed transforms
+        return transforms_list
 
-        return transforms
 
     def set_dataset(self, dataset):
         """Set dataset reference for augmentations that need it."""
@@ -349,28 +275,14 @@ class AdvancedAugmentationPipeline:
         return input_img, target_img
 
 
-# Configuration presets
-AUGMENTATION_PRESETS = {
-    "none": {"config": "none"},
-    "light": {"config": "light"},
-    "standard": {"config": "standard"},
-    "production": {"config": "production"},
-    "test": {"config": "light"},  # Test uses light augmentation
-    "development": {
-        "config": "standard"
-    },  # Development uses standard augmentation
-}
-
-
 def get_augmentation_config(
-    augmentation_level: str, image_size: int = 64
+    augmentation_level: str, image_size: int = 96
 ) -> AdvancedAugmentationPipeline:
     """
     Get augmentation configuration for specified level.
 
     Args:
-        augmentation_level: Level of augmentation ("light", "standard",
-                          "production", "none")
+        augmentation_level: Level of augmentation 
         image_size: Target image size
 
     Returns:
