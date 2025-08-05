@@ -7,11 +7,13 @@ including edge detection filters and common mathematical operations.
 
 import torch
 import torch.nn.functional as F
+from typing import Tuple
+
 
 
 def create_sobel_filters(
     device: torch.device,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Create Sobel edge detection filters for X and Y directions.
 
