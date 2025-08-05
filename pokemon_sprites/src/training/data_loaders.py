@@ -176,19 +176,28 @@ def create_data_loaders(
         # Fallback hierarchy: try 256, then 128, then 96
         if not data_dir.exists():
             # Try 256 first
-            fallback_dir = data_root / "pokemon_complete" / "processed" / "input_256"
+            fallback_dir = (
+                data_root / "pokemon_complete" / "processed" / "input_256"
+            )
             if fallback_dir.exists():
                 data_dir = fallback_dir
                 target_size = 256
             else:
                 # Try 128
-                fallback_dir = data_root / "pokemon_complete" / "processed" / "input_128"
+                fallback_dir = (
+                    data_root / "pokemon_complete" / "processed" / "input_128"
+                )
                 if fallback_dir.exists():
                     data_dir = fallback_dir
                     target_size = 128
                 else:
                     # Try 96
-                    fallback_dir = data_root / "pokemon_complete" / "processed" / "input_96"
+                    fallback_dir = (
+                        data_root
+                        / "pokemon_complete"
+                        / "processed"
+                        / "input_96"
+                    )
                     if fallback_dir.exists():
                         data_dir = fallback_dir
                         target_size = 96

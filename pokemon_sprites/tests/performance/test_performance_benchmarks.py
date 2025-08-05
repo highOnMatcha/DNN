@@ -392,7 +392,7 @@ class TestAugmentationPerformance(unittest.TestCase):
         """Test performance of augmentation pipeline."""
         # Create complex augmentation pipeline
         pipeline = AdvancedAugmentationPipeline(
-            "production"
+            "strong"
         )  # Use predefined production config
 
         # Test with different image sizes and batch sizes

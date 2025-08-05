@@ -16,45 +16,47 @@ import requests
 from PIL import Image
 
 
-def check_existing_raw_data(sprites_dir: Path, artwork_dir: Path, min_required: int = 50) -> Dict:
+def check_existing_raw_data(
+    sprites_dir: Path, artwork_dir: Path, min_required: int = 50
+) -> Dict:
     """
     Check if sufficient raw data already exists to skip downloading.
-    
+
     Args:
         sprites_dir: Directory containing sprite files
-        artwork_dir: Directory containing artwork files  
+        artwork_dir: Directory containing artwork files
         min_required: Minimum number of valid pairs required
-        
+
     Returns:
         Dictionary with status info: {'sufficient': bool, 'pairs_found': int, 'details': str}
     """
     if not (sprites_dir.exists() and artwork_dir.exists()):
         return {
-            'sufficient': False, 
-            'pairs_found': 0, 
-            'details': 'Raw data directories do not exist'
+            "sufficient": False,
+            "pairs_found": 0,
+            "details": "Raw data directories do not exist",
         }
-    
+
     # Get file counts
     sprite_files = list(sprites_dir.glob("*.png"))
     artwork_files = list(artwork_dir.glob("*.png"))
-    
+
     if len(sprite_files) == 0 or len(artwork_files) == 0:
         return {
-            'sufficient': False,
-            'pairs_found': 0, 
-            'details': f'Empty directories - sprites: {len(sprite_files)}, artwork: {len(artwork_files)}'
+            "sufficient": False,
+            "pairs_found": 0,
+            "details": f"Empty directories - sprites: {len(sprite_files)}, artwork: {len(artwork_files)}",
         }
-    
+
     # Find valid pairs using existing function
     valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
-    
+
     sufficient = len(valid_pairs) >= min_required
-    
+
     return {
-        'sufficient': sufficient,
-        'pairs_found': len(valid_pairs),
-        'details': f'Found {len(valid_pairs)} valid pairs (sprites: {len(sprite_files)}, artwork: {len(artwork_files)})'
+        "sufficient": sufficient,
+        "pairs_found": len(valid_pairs),
+        "details": f"Found {len(valid_pairs)} valid pairs (sprites: {len(sprite_files)}, artwork: {len(artwork_files)})",
     }
 
 
@@ -177,19 +179,21 @@ def find_valid_pairs(sprites_dir: Path, artwork_dir: Path) -> List[Dict]:
     return valid_pairs
 
 
-def get_content_bbox(img: Image.Image, threshold: int = 10) -> Tuple[int, int, int, int]:
+def get_content_bbox(
+    img: Image.Image, threshold: int = 10
+) -> Tuple[int, int, int, int]:
     """
     Get tight bounding box of non-transparent content in image.
-    
+
     Args:
         img: PIL Image (RGBA or RGB)
         threshold: Alpha threshold for transparency detection
-        
+
     Returns:
         Tuple of (left, top, right, bottom) bounding box coordinates
     """
     img_array = np.array(img)
-    
+
     if img.mode == "RGBA":
         # For RGBA, find non-transparent pixels
         alpha = img_array[:, :, 3]
@@ -197,45 +201,51 @@ def get_content_bbox(img: Image.Image, threshold: int = 10) -> Tuple[int, int, i
     else:
         # For RGB, find non-white pixels (assuming white background)
         content_mask = ~np.all(img_array >= 240, axis=2)
-    
+
     # Find content bounds
     if not np.any(content_mask):
         # No content found, return full image
         return (0, 0, img.width, img.height)
-    
+
     rows = np.any(content_mask, axis=1)
     cols = np.any(content_mask, axis=0)
-    
+
     top, bottom = np.where(rows)[0][[0, -1]]
     left, right = np.where(cols)[0][[0, -1]]
-    
+
     return (int(left), int(top), int(right + 1), int(bottom + 1))
 
 
-def analyze_dataset_crop_sizes(sprites_dir: Path, artwork_dir: Path, sample_size: int = 100) -> Dict:
+def analyze_dataset_crop_sizes(
+    sprites_dir: Path, artwork_dir: Path, sample_size: int = 100
+) -> Dict:
     """
     Analyze dataset to find optimal crop sizes for both sprites and artwork.
-    
+
     Args:
         sprites_dir: Directory containing sprite files
-        artwork_dir: Directory containing artwork files  
+        artwork_dir: Directory containing artwork files
         sample_size: Number of samples to analyze
-        
+
     Returns:
         Dictionary with recommended sizes and statistics
     """
     valid_pairs = find_valid_pairs(sprites_dir, artwork_dir)
     if not valid_pairs:
         return {"error": "No valid pairs found"}
-    
+
     # Sample for analysis
-    sample_pairs = valid_pairs[:sample_size] if len(valid_pairs) > sample_size else valid_pairs
-    
+    sample_pairs = (
+        valid_pairs[:sample_size]
+        if len(valid_pairs) > sample_size
+        else valid_pairs
+    )
+
     sprite_widths = []
     sprite_heights = []
     artwork_widths = []
     artwork_heights = []
-    
+
     for pair in sample_pairs:
         try:
             # Analyze sprite content size after cropping
@@ -245,7 +255,7 @@ def analyze_dataset_crop_sizes(sprites_dir: Path, artwork_dir: Path, sample_size
             sprite_h = sprite_bbox[3] - sprite_bbox[1]
             sprite_widths.append(sprite_w)
             sprite_heights.append(sprite_h)
-            
+
             # Analyze artwork content size after cropping
             artwork_img = Image.open(pair["artwork_path"]).convert("RGBA")
             artwork_bbox = get_content_bbox(artwork_img)
@@ -253,41 +263,59 @@ def analyze_dataset_crop_sizes(sprites_dir: Path, artwork_dir: Path, sample_size
             artwork_h = artwork_bbox[3] - artwork_bbox[1]
             artwork_widths.append(artwork_w)
             artwork_heights.append(artwork_h)
-            
+
         except Exception:
             continue
-    
+
     if not sprite_widths:
         return {"error": "Could not analyze any images"}
-    
+
     # Calculate statistics
     stats = {
         "samples_analyzed": len(sprite_widths),
         "sprite_content": {
-            "width": {"min": min(sprite_widths), "max": max(sprite_widths), "avg": np.mean(sprite_widths)},
-            "height": {"min": min(sprite_heights), "max": max(sprite_heights), "avg": np.mean(sprite_heights)},
-            "max_content_size": (max(sprite_widths), max(sprite_heights))
+            "width": {
+                "min": min(sprite_widths),
+                "max": max(sprite_widths),
+                "avg": np.mean(sprite_widths),
+            },
+            "height": {
+                "min": min(sprite_heights),
+                "max": max(sprite_heights),
+                "avg": np.mean(sprite_heights),
+            },
+            "max_content_size": (max(sprite_widths), max(sprite_heights)),
         },
         "artwork_content": {
-            "width": {"min": min(artwork_widths), "max": max(artwork_widths), "avg": np.mean(artwork_widths)},
-            "height": {"min": min(artwork_heights), "max": max(artwork_heights), "avg": np.mean(artwork_heights)},
-            "max_content_size": (max(artwork_widths), max(artwork_heights))
-        }
+            "width": {
+                "min": min(artwork_widths),
+                "max": max(artwork_widths),
+                "avg": np.mean(artwork_widths),
+            },
+            "height": {
+                "min": min(artwork_heights),
+                "max": max(artwork_heights),
+                "avg": np.mean(artwork_heights),
+            },
+            "max_content_size": (max(artwork_widths), max(artwork_heights)),
+        },
     }
-    
+
     # Recommend optimal sizes
     # For sprites: use 95th percentile to accommodate most content
     sprite_w_95 = int(np.percentile(sprite_widths, 95))
     sprite_h_95 = int(np.percentile(sprite_heights, 95))
     sprite_optimal = max(sprite_w_95, sprite_h_95)  # Square for simplicity
-    
+
     # Round up to nearest 32 for efficient processing
     sprite_optimal = int(np.ceil(sprite_optimal / 32) * 32)
     sprite_optimal = max(64, sprite_optimal)  # Minimum 64x64
-    
+
     stats["recommended_target_size"] = sprite_optimal
-    stats["size_reduction_vs_256"] = f"{(1 - (sprite_optimal/256)**2)*100:.1f}% fewer parameters"
-    
+    stats["size_reduction_vs_256"] = (
+        f"{(1 - (sprite_optimal/256)**2)*100:.1f}% fewer parameters"
+    )
+
     return stats
 
 
@@ -296,22 +324,22 @@ def smart_crop_and_resize(
 ) -> Image.Image:
     """
     Aggressively crop to content bounds then resize.
-    
+
     Args:
         img: PIL Image to process
         target_size: Target (width, height)
         preserve_alpha: Whether to preserve alpha channel
-        
+
     Returns:
         Processed PIL Image with content tightly cropped
     """
     # Get tight content bounding box
     bbox = get_content_bbox(img)
     left, top, right, bottom = bbox
-    
+
     # Crop tightly to content (no padding)
     cropped = img.crop((left, top, right, bottom))
-    
+
     # Resize with padding to maintain aspect ratio
     return resize_with_padding(cropped, target_size, preserve_alpha)
 
@@ -411,8 +439,16 @@ def process_image_pairs(
 
             # Save processed images with explicit RGBA preservation
             if preserve_argb:
-                artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png", "PNG", optimize=False)
-                sprite_processed.save(target_dir / f"pokemon_{pokemon_id}.png", "PNG", optimize=False)
+                artwork_processed.save(
+                    input_dir / f"pokemon_{pokemon_id}.png",
+                    "PNG",
+                    optimize=False,
+                )
+                sprite_processed.save(
+                    target_dir / f"pokemon_{pokemon_id}.png",
+                    "PNG",
+                    optimize=False,
+                )
             else:
                 artwork_processed.save(input_dir / f"pokemon_{pokemon_id}.png")
                 sprite_processed.save(target_dir / f"pokemon_{pokemon_id}.png")
@@ -554,7 +590,9 @@ def create_training_dataset(
     val_pairs = pairs[split_idx:]
 
     # Process training pairs with ARGB support
-    print(f"Processing {len(train_pairs)} training pairs with smart cropping...")
+    print(
+        f"Processing {len(train_pairs)} training pairs with smart cropping..."
+    )
     for i, pair in enumerate(train_pairs):
         # Process artwork (input)
         artwork_img = Image.open(pair["artwork_path"])
@@ -577,7 +615,9 @@ def create_training_dataset(
             sprite_img = sprite_img.convert("RGBA")
         else:
             sprite_img = sprite_img.convert("RGB")
-        sprite_img = smart_crop_and_resize(sprite_img, image_size, preserve_argb)
+        sprite_img = smart_crop_and_resize(
+            sprite_img, image_size, preserve_argb
+        )
         sprite_output = train_target_dir / f"pokemon_{pair['pokemon_id']}.png"
         if preserve_argb:
             sprite_img.save(sprite_output, "PNG", optimize=False)
@@ -585,7 +625,9 @@ def create_training_dataset(
             sprite_img.save(sprite_output, "PNG")
 
     # Process validation pairs with smart cropping
-    print(f"Processing {len(val_pairs)} validation pairs with smart cropping...")
+    print(
+        f"Processing {len(val_pairs)} validation pairs with smart cropping..."
+    )
     for i, pair in enumerate(val_pairs):
         # Process artwork (input)
         artwork_img = Image.open(pair["artwork_path"])
@@ -608,7 +650,9 @@ def create_training_dataset(
             sprite_img = sprite_img.convert("RGBA")
         else:
             sprite_img = sprite_img.convert("RGB")
-        sprite_img = smart_crop_and_resize(sprite_img, image_size, preserve_argb)
+        sprite_img = smart_crop_and_resize(
+            sprite_img, image_size, preserve_argb
+        )
         sprite_output = val_target_dir / f"pokemon_{pair['pokemon_id']}.png"
         if preserve_argb:
             sprite_img.save(sprite_output, "PNG", optimize=False)
@@ -1329,7 +1373,9 @@ def create_preprocessing_pipeline(dataset_dir: Path) -> Tuple[Path, Dict]:
     # Create training dataset with optimal 96x96 scale for native sprite resolution
     scale = 96
     scale_output_dir = processed_dir / f"input_{scale}"
-    print(f"Processing optimal scale: {scale}x{scale} (native sprite resolution) with ARGB support")
+    print(
+        f"Processing optimal scale: {scale}x{scale} (native sprite resolution) with ARGB support"
+    )
 
     dataset_info = create_training_dataset(
         valid_pairs,

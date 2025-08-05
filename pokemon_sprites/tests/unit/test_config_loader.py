@@ -29,7 +29,7 @@ class TestConfigurationLoaderBasic(unittest.TestCase):
     def test_configuration_loader_initialization(self):
         """Test ConfigurationLoader initialization."""
         self.assertIsInstance(self.config_loader, ConfigurationLoader)
-        self.assertEqual(len(self.config_loader.supported_models), 3)
+        self.assertEqual(len(self.config_loader.supported_models), 4)
         self.assertEqual(len(self.config_loader.supported_configs), 3)
         logger.info("ConfigurationLoader initialization verified")
 

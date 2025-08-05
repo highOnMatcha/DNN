@@ -7,13 +7,14 @@ pixel art optimizations. Updated for ARGB (RGBA) processing.
 """
 
 import random
-from typing import Dict, Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image, ImageOps
 
 from core.logging_config import get_logger
+
 logger = get_logger(__name__)
 
 
@@ -193,6 +194,7 @@ class PairedCutout:
 
         return input_img, target_img
 
+
 class AdvancedAugmentationPipeline:
     """Advanced augmentation pipeline for Pokemon sprite generation.
     Updated for ARGB (RGBA) processing."""
@@ -213,7 +215,9 @@ class AdvancedAugmentationPipeline:
         """
         self.config = config
         self.image_size = image_size
-        logger.info(f"Initializing augmentation pipeline with config: {config}")
+        logger.info(
+            f"Initializing augmentation pipeline with config: {config}"
+        )
         # Build augmentation pipeline based on config
         if config == "none":
             logger.info("No augmentation applied")
@@ -222,12 +226,13 @@ class AdvancedAugmentationPipeline:
             self.transforms = self._build_from_config(config)
         else:
             raise ValueError(f"Unknown augmentation config: {config}")
-        
+
     def _build_from_config(self, config: str) -> list:
         """Build augmentation pipeline from configuration json."""
-        #load the json config, example above
+        # load the json config, example above
         import json
         from pathlib import Path
+
         config_path = Path(__file__).parent / "../config/model_configs.json"
         with open(config_path, "r") as f:
             config_dict = json.load(f)
@@ -261,7 +266,6 @@ class AdvancedAugmentationPipeline:
         # Return composed transforms
         return transforms_list
 
-
     def set_dataset(self, dataset):
         """Set dataset reference for augmentations that need it."""
         # No longer needed since we removed MixupAugmentation
@@ -282,7 +286,7 @@ def get_augmentation_config(
     Get augmentation configuration for specified level.
 
     Args:
-        augmentation_level: Level of augmentation 
+        augmentation_level: Level of augmentation
         image_size: Target image size
 
     Returns:

@@ -78,15 +78,23 @@ class DatasetManager:
             self.sprites_dir.mkdir(parents=True, exist_ok=True)
 
             # Check if we already have sufficient raw data
-            raw_data_status = check_existing_raw_data(self.sprites_dir, self.artwork_dir)
-            
-            if raw_data_status['sufficient']:
-                logger.info(f"Found existing raw data: {raw_data_status['details']}")
-                logger.info("Skipping download, proceeding to create training dataset...")
+            raw_data_status = check_existing_raw_data(
+                self.sprites_dir, self.artwork_dir
+            )
+
+            if raw_data_status["sufficient"]:
+                logger.info(
+                    f"Found existing raw data: {raw_data_status['details']}"
+                )
+                logger.info(
+                    "Skipping download, proceeding to create training dataset..."
+                )
             else:
-                logger.info(f"Insufficient raw data: {raw_data_status['details']}")
+                logger.info(
+                    f"Insufficient raw data: {raw_data_status['details']}"
+                )
                 logger.info("Downloading Pokemon data...")
-                
+
                 # Download and prepare data
                 if not self._download_pokemon_data():
                     return False

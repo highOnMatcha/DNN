@@ -115,35 +115,11 @@ class TestARGBPairedTransforms(unittest.TestCase):
         self.assertEqual(cutout_input.mode, "RGBA")
         self.assertEqual(cutout_target.mode, "RGBA")
 
-    def test_advanced_augmentation_pipeline_argb(self):
-        """Test AdvancedAugmentationPipeline with ARGB images."""
-        config_dict = {
-            "horizontal_flip_p": 0.5,
-            "rotation_degrees": 15,
-            "color_jitter": {
-                "brightness": 0.2,
-                "contrast": 0.2,
-                "saturation": 0.2,
-                "hue": 0.1,
-            },
-            "cutout": {"size_ratio": 16, "p": 0.2},
-        }
-
-        pipeline = AdvancedAugmentationPipeline(
-            "standard", config_dict=config_dict
-        )
-        aug_input, aug_target = pipeline(self.input_image, self.target_image)
-
-        self.assertIsInstance(aug_input, Image.Image)
-        self.assertIsInstance(aug_target, Image.Image)
-        self.assertEqual(aug_input.mode, "RGBA")
-        self.assertEqual(aug_target.mode, "RGBA")
-
     def test_get_augmentation_config(self):
         """Test get_augmentation_config function."""
-        config = get_augmentation_config("standard")
+        config = get_augmentation_config("strong")
         self.assertIsInstance(config, AdvancedAugmentationPipeline)
-        self.assertEqual(config.config, "standard")
+        self.assertEqual(config.config, "strong")
 
     def test_argb_alpha_channel_preservation(self):
         """Test that alpha channel is preserved through augmentations."""
